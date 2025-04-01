@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["streamlit", "run", "app.py", "--server.port", "$PORT"]
+CMD streamlit run app.py --server.port=${PORT:-8080}
