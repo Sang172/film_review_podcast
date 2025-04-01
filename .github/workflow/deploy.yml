@@ -1,0 +1,64 @@
+name: Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Configure Google Cloud CLI
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        project_id: ${{ secrets.GCP_PROJECT_ID }}
+        workload_identity_provider: projects/${{ secrets.GCP_PROJECT_ID }}/locations/global/workloadIdentityPools/github-oidc/providers/github
+        service_account: sang-540@film-review-podcast.iam.gserviceaccount.com
+
+    - name: Enable Cloud Run API
+      run: gcloud services enable run.googleapis.com
+
+    - name: Build and push Docker image to Artifact Registry
+      run: |
+        REGION=${{ secrets.GCP_REGION }}
+        PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+        ARTIFACT_REGISTRY=${{ secrets.GCP_ARTIFACT_REGISTRY }}
+        IMAGE_NAME=film-review-podcast
+        IMAGE_TAG=latest
+        DOCKER_REGISTRY="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REGISTRY"
+        docker build -t $IMAGE_NAME .
+        docker tag $IMAGE_NAME $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        gcloud auth configure-docker $DOCKER_REGISTRY --quiet
+        docker push $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+
+    - name: Deploy to Cloud Run
+      run: |
+        REGION=${{ secrets.GCP_REGION }}
+        PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+        ARTIFACT_REGISTRY=${{ secrets.GCP_ARTIFACT_REGISTRY }}
+        IMAGE_NAME=film-review-podcast
+        IMAGE_TAG=latest
+        DOCKER_REGISTRY="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REGISTRY"
+        SERVICE_NAME=film-review-podcast
+        gcloud run deploy $SERVICE_NAME \
+          --image $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
+          --region $REGION \
+          --platform managed \
+          --allow-unauthenticated \
+          --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} # Only need GEMINI_API_KEY now
