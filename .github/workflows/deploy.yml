@@ -5,8 +5,17 @@ on:
     branches:
       - main
 
+env:
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ secrets.GCP_REGION }}
+  GCP_ARTIFACT_REGISTRY: ${{ secrets.GCP_ARTIFACT_REGISTRY }}
+  GCP_SERVICE_ACCOUNT: sang-540@film-review-podcast.iam.gserviceaccount.com
+  SERVICE_NAME: film-review-podcast
+  IMAGE_NAME: film-review-podcast
+
 jobs:
   build-and-deploy:
+    name: Build and Deploy
     runs-on: ubuntu-latest
     permissions:
       contents: 'read'
@@ -16,49 +25,40 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-
-    - name: Install dependencies
-      run: pip install -r requirements.txt
-
-    - name: Configure Google Cloud CLI
+    - name: Authenticate to Google Cloud
+      id: auth
       uses: google-github-actions/setup-gcloud@v2
       with:
-        project_id: ${{ secrets.GCP_PROJECT_ID }}
-        workload_identity_provider: projects/${{ secrets.GCP_PROJECT_ID }}/locations/global/workloadIdentityPools/github-oidc/providers/github
-        service_account: sang-540@film-review-podcast.iam.gserviceaccount.com
+        project_id: ${{ env.GCP_PROJECT_ID }}
+        workload_identity_provider: projects/${{ env.GCP_PROJECT_ID }}/locations/global/workloadIdentityPools/github-oidc/providers/github
+        service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
 
-    - name: Enable Cloud Run API
-      run: gcloud services enable run.googleapis.com
+    - name: Enable Google Cloud APIs
+      run: |-
+        gcloud services enable run.googleapis.com
+        gcloud services enable artifactregistry.googleapis.com
+        gcloud services enable texttospeech.googleapis.com # Needed by the app
 
-    - name: Build and push Docker image to Artifact Registry
+    - name: Configure Docker
+      run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+    - name: Build and Push Docker image
+      env:
+        DOCKER_REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_ARTIFACT_REGISTRY }}
+        IMAGE_TAG: ${{ github.sha }}
       run: |
-        REGION=${{ secrets.GCP_REGION }}
-        PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-        ARTIFACT_REGISTRY=${{ secrets.GCP_ARTIFACT_REGISTRY }}
-        IMAGE_NAME=film-review-podcast
-        IMAGE_TAG=latest
-        DOCKER_REGISTRY="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REGISTRY"
-        docker build -t $IMAGE_NAME .
-        docker tag $IMAGE_NAME $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
-        gcloud auth configure-docker $DOCKER_REGISTRY --quiet
-        docker push $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        docker build -t "$DOCKER_REGISTRY/${{ env.IMAGE_NAME }}:$IMAGE_TAG" .
+        docker push "$DOCKER_REGISTRY/${{ env.IMAGE_NAME }}:$IMAGE_TAG"
 
     - name: Deploy to Cloud Run
+      env:
+        DOCKER_REGISTRY: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_ARTIFACT_REGISTRY }}
+        IMAGE_TAG: ${{ github.sha }}
       run: |
-        REGION=${{ secrets.GCP_REGION }}
-        PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-        ARTIFACT_REGISTRY=${{ secrets.GCP_ARTIFACT_REGISTRY }}
-        IMAGE_NAME=film-review-podcast
-        IMAGE_TAG=latest
-        DOCKER_REGISTRY="$REGION-docker.pkg.dev/$PROJECT_ID/$ARTIFACT_REGISTRY"
-        SERVICE_NAME=film-review-podcast
-        gcloud run deploy $SERVICE_NAME \
-          --image $DOCKER_REGISTRY/$IMAGE_NAME:$IMAGE_TAG \
-          --region $REGION \
+        gcloud run deploy ${{ env.SERVICE_NAME }} \
+          --image "$DOCKER_REGISTRY/${{ env.IMAGE_NAME }}:$IMAGE_TAG" \
+          --region ${{ env.GCP_REGION }} \
           --platform managed \
+          --service-account ${{ env.GCP_SERVICE_ACCOUNT }} \
           --allow-unauthenticated \
-          --set-env-vars GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }} # Only need GEMINI_API_KEY now
+          --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" \
