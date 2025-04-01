@@ -71,7 +71,8 @@ def get_video_transcripts(videos):
                     'transcript': full_transcript
                 })
                 logger.info("Transcript Retrieved")
-            except:
+            except Exception as e:
+                logger.error(f"{e}")
                 logger.info("Transcript Not Found")
 
     return video_transcripts
