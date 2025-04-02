@@ -213,14 +213,19 @@ def main(movie: str):
     return video_transcripts, review, podcast_bytes
 
 
+@st.cache_data
+def generate_podcast(movie_title):
+    with st.spinner(f"Searching for reviews and generating podcast for '{movie_title}', may take up to 10 minutes..."):
+        video_transcripts, review, podcast_bytes = main(movie_title)
+    return video_transcripts, review, podcast_bytes
+
 
 if __name__ == "__main__":
     st.title("CineCast AI")
     movie_title = st.text_input("Enter the movie title:")
 
     if movie_title:
-        with st.spinner(f"Searching for reviews and generating podcast for '{movie_title}', may take up to 10 minutes..."):
-            video_transcripts, review, podcast_bytes = main(movie_title)
+        video_transcripts, review, podcast_bytes = generate_podcast(movie_title)
 
         st.subheader(f"Podcast for '{movie_title}' generated!")
         st.audio(podcast_bytes, format="audio/mp3")
