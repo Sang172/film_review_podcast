@@ -33,7 +33,7 @@ def get_gemini_response(prompt):
     return llm.generate_content(prompt).text.strip()
 
 
-def get_video_transcripts(videos, proxy):
+def get_video_transcripts(videos, movie, proxy=proxy):
 
     video_transcripts = []
     proxies = {'http': proxy, 'https': proxy}
@@ -46,10 +46,10 @@ def get_video_transcripts(videos, proxy):
 
         review_or_not = f"""
         I will give you the title of a YouTube video.
-        Your task is to determine whether or not it is a film review video.
+        Your task is to determine whether or not it is a review video about the film '{movie}'.
         Your answer should be only 'yes' or 'no'.
         If the video is a movie trailer, your response should be 'no'.
-        If the video is from a press junket, your reponse should be 'no'.
+        If the video is from the press junket, your reponse should be 'no'.
         If unsure, respond with a 'yes'.
         The title is provided below:
         {video_title}
@@ -197,13 +197,13 @@ def create_podcast(review):
     return audio_buffer.read()
 
 
-def main(movie: str, proxy=proxy):
+def main(movie: str):
     search_term = movie + ' movie review'
     max_results = 20
     logger.info(f'Searching YouTube for reviews on {movie}...')
     videos = YoutubeSearch(search_term, max_results=max_results).to_dict()
     logger.info('Search complete, retrieving transcripts...')
-    video_transcripts = get_video_transcripts(videos, proxy)
+    video_transcripts = get_video_transcripts(videos, movie)
     logger.info('Retrieval complete, analyzing reviews...')
     reviews = review_summary_parallel_with_retry(video_transcripts)
     review = get_final_summary(reviews)
