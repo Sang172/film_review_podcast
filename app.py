@@ -199,7 +199,7 @@ def create_podcast(review):
 
 def main(movie: str):
     search_term = movie + ' movie review'
-    max_results = 20
+    max_results = 5
     logger.info(f'Searching YouTube for reviews on {movie}...')
     videos = YoutubeSearch(search_term, max_results=max_results).to_dict()
     logger.info('Search complete, retrieving transcripts...')
