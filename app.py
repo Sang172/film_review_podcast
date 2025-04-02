@@ -61,7 +61,7 @@ def get_video_transcripts(videos, movie, proxy=proxy):
             logger.info(f"Processing '{video_title}' by '{video_creator}'")
 
             try:
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxies)
+                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'], proxies=proxies)
 
                 full_transcript = " ".join([item['text'] for item in transcript_list])
 
