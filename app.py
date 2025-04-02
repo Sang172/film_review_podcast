@@ -19,7 +19,7 @@ load_dotenv()
 # credentials_path=os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
 # credentials = Credentials.from_service_account_file(credentials_path)
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-
+proxy = os.environ.get('PROXY_ADDRESS')
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -36,6 +36,7 @@ def get_gemini_response(prompt):
 def get_video_transcripts(videos):
 
     video_transcripts = []
+    proxies = {'http': proxy, 'https': proxy}
 
     for video in videos:
         video_id = video['id']
@@ -60,7 +61,7 @@ def get_video_transcripts(videos):
             logger.info(f"Processing '{video_title}' by '{video_creator}'")
 
             try:
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxies)
 
                 full_transcript = " ".join([item['text'] for item in transcript_list])
 

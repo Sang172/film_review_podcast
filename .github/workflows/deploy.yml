@@ -63,4 +63,4 @@ jobs:
           --platform managed \
           --service-account ${{ env.GCP_RUNTIME_SERVICE_ACCOUNT }} \
           --allow-unauthenticated \
-          --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
+          --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},PROXY_ADDRESS=${{ secrets.PROXY_ADDRESS }}"
