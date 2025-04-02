@@ -221,7 +221,7 @@ def generate_podcast(movie_title):
 
 if __name__ == "__main__":
     st.title("CineCast AI")
-    movie_title = st.text_input("Enter the movie title:")
+    movie_title = st.text_input("Enter movie title:")
 
     if movie_title:
         with st.spinner(f"Searching for reviews and generating podcast for '{movie_title}', may take up to 10 minutes..."):
