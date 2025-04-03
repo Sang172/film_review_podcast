@@ -2,7 +2,7 @@
 
 CineCast AI is a Python application that leverages Large Language Models (LLMs) to generate a comprehensive movie review podcast by summarizing and synthesizing multiple YouTube video reviews.
 
-- Team members: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee
+Team members: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee
 
 ## Overview
 
