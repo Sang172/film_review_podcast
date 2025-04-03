@@ -79,26 +79,27 @@ def get_video_transcripts(videos, movie, proxy=proxy):
     return video_transcripts
 
 
-def get_review_summary(chunk):
+def get_review_summary(chunk, movie):
     video = f"review '{chunk['title']}' by '{chunk['creator']}'\n\n{chunk['transcript']}"
     logger.info('summarizing '+video.split('\n\n')[0])
     prompt = f"""
     You are an intelligent film critic.
-    Your task is to write a summary of another person's film review.
-    The summary should be around 1000 words.
+    Your task is to write a summary of someone's review of the film "{movie}".
+    If the provided review is not a dedicated review of "{movie}", just return 'Not a "{movie}" review'.
+    Otherwise, summarize the review into around 1000 words.
     I will provide the film review below:
     {video}
     """
     podcast_transcript = get_gemini_response(prompt)
     return podcast_transcript
 
-def review_summary_with_retry(chunk, max_retries=10, initial_delay=5):
+def review_summary_with_retry(chunk, movie, max_retries=10, initial_delay=5):
 
     retries = 0
     delay = initial_delay
     while retries <= max_retries:
         try:
-            return get_review_summary(chunk)
+            return get_review_summary(chunk, movie)
         except:
             logger.info(f"Error processing chunk '{chunk.get('title', 'Unknown')}' (Retry {retries + 1}/{max_retries})")
             if retries < max_retries:
@@ -111,11 +112,11 @@ def review_summary_with_retry(chunk, max_retries=10, initial_delay=5):
                 return None
             
 
-def review_summary_parallel_with_retry(chunks, max_workers=5):
+def review_summary_parallel_with_retry(chunks, movie, max_workers=5):
 
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_chunk = {executor.submit(review_summary_with_retry, chunk): chunk for chunk in chunks}
+        future_to_chunk = {executor.submit(review_summary_with_retry, chunk, movie): chunk for chunk in chunks}
         for future in concurrent.futures.as_completed(future_to_chunk):
             chunk = future_to_chunk[future]
             try:
@@ -128,12 +129,13 @@ def review_summary_parallel_with_retry(chunks, max_workers=5):
 
 
 
-def get_final_summary(chunks):
+def get_final_summary(chunks, movie):
     combined_reviews = '\n\n----------------------\n\n'.join(chunks)
     prompt = f"""
     You are an intelligent film critic. Your task is to write a film review.
-    I will give you multiple reviews about the same movie, each by a different person.
+    I will give you multiple different reviews about the film "{movie}".
     Combine the information in the reviews to produce a single summary review that offers the most comprehensive overview.
+    If there is any review that is related to movies other than "{movie}", ignore that review.
     The summary review should be between 1500-2000 words in length.
     It should be written in essay format with no title where each paragraph is separated with newline separators. Do NOT include any bullet points.
     Dive into the summary review right away and do NOT include any introductory remarks such as "After going through the reviews".
@@ -205,8 +207,8 @@ def main(movie: str):
     logger.info('Search complete, retrieving transcripts...')
     video_transcripts = get_video_transcripts(videos, movie)
     logger.info('Retrieval complete, analyzing reviews...')
-    reviews = review_summary_parallel_with_retry(video_transcripts)
-    review = get_final_summary(reviews)
+    reviews = review_summary_parallel_with_retry(video_transcripts, movie)
+    review = get_final_summary(reviews, movie)
     logger.info('Analysis complete, generating podcast...')
     podcast_bytes = create_podcast(review)
     logger.info(f"Podcast generation complete")
