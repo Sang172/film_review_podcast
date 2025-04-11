@@ -3,6 +3,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from dotenv import load_dotenv
 import os
 import google.generativeai as genai
+from google.cloud import storage
 from google.cloud import texttospeech_v1beta1 as texttospeech
 # from google.oauth2.service_account import Credentials
 import concurrent.futures
@@ -11,6 +12,7 @@ from pydub import AudioSegment
 import logging
 import streamlit as st
 from gtts import gTTS
+import pickle
 import pandas as pd
 import io
 
@@ -20,6 +22,7 @@ load_dotenv()
 # credentials = Credentials.from_service_account_file(credentials_path)
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 proxy = os.environ.get('PROXY_ADDRESS')
+# proxy = None
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -62,6 +65,7 @@ def get_video_transcripts(videos, movie, proxy=proxy):
 
             try:
                 transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'], proxies=proxies)
+                # transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
 
                 full_transcript = " ".join([item['text'] for item in transcript_list])
 
@@ -202,6 +206,33 @@ def create_podcast(review):
 def main(movie: str):
     search_term = movie + ' movie review'
     max_results = 5
+    
+    gcs_bucket_name = 'msds603_film_podcast'
+    directory_name = movie.lower().replace(' ', '_')
+    podcast_gcs_path = f"{directory_name}/{directory_name}_podcast.mp3"
+    review_gcs_path = f"{directory_name}/{directory_name}_review_text.pkl"
+    transcripts_gcs_path = f"{directory_name}/{directory_name}_source_videos.pkl"
+
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(gcs_bucket_name)
+
+    podcast_blob = bucket.blob(podcast_gcs_path)
+    review_blob = bucket.blob(review_gcs_path)
+    transcripts_blob = bucket.blob(transcripts_gcs_path)
+
+    if podcast_blob.exists() and review_blob.exists() and transcripts_blob.exists():
+        logger.info(f"Cache hit for '{movie}'")
+        podcast_bytes = podcast_blob.download_as_bytes()
+        review_pickle_bytes = review_blob.download_as_bytes()
+        transcripts_pickle_bytes = transcripts_blob.download_as_bytes()
+
+        review = pickle.loads(review_pickle_bytes)
+        video_transcripts = pickle.loads(transcripts_pickle_bytes)
+
+        logger.info(f"Successfully loaded cached data for '{movie}' from GCS.")
+        return video_transcripts, review, podcast_bytes
+
+
     logger.info(f'Searching YouTube for reviews on {movie}...')
     videos = YoutubeSearch(search_term, max_results=max_results).to_dict()
     logger.info('Search complete, retrieving transcripts...')
@@ -212,6 +243,14 @@ def main(movie: str):
     logger.info('Analysis complete, generating podcast...')
     podcast_bytes = create_podcast(review)
     logger.info(f"Podcast generation complete")
+
+    review_pickle_bytes = pickle.dumps(review)
+    transcripts_pickle_bytes = pickle.dumps(video_transcripts)
+    podcast_blob.upload_from_string(podcast_bytes, content_type='audio/mpeg')
+    review_blob.upload_from_string(review_pickle_bytes, content_type='application/octet-stream')
+    transcripts_blob.upload_from_string(transcripts_pickle_bytes, content_type='application/octet-stream')
+    logger.info(f"Successfully saved results for '{movie}' to GCS.")
+
     return video_transcripts, review, podcast_bytes
 
 
