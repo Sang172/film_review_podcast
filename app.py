@@ -89,11 +89,11 @@ def generate_podcast(movie_title, allow_spoilers=False):
 
 if __name__ == "__main__":
     st.set_page_config(
-        page_title="Cinecast AI",
+        page_title="CineCast AI",
         page_icon="🎬"
     )
 
-    st.title("CineCast AI")
+    st.title("🎬 CineCast AI")
     col1, col2 = st.columns([2, 1])
     
     with col1:
