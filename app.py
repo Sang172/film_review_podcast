@@ -36,7 +36,7 @@ def get_gemini_response(prompt):
     return llm.generate_content(prompt).text.strip()
 
 
-def get_video_transcripts(videos, movie, proxy=proxy):
+def get_video_transcripts(videos, movie, proxy=proxy, allow_spoilers=False):
 
     video_transcripts = []
     proxies = {'http': proxy, 'https': proxy}
@@ -60,6 +60,22 @@ def get_video_transcripts(videos, movie, proxy=proxy):
         response = get_gemini_response(review_or_not)
 
         if response.lower()=='yes':
+            if not allow_spoilers:
+                contains_spoiler = False
+                spoiler_keywords = ['spoiler', 'spoilers', 'ending explained', 'plot twist', 'reveals', 'full plot']
+                for keyword in spoiler_keywords:
+                    if keyword.lower() in video_title.lower():
+                        contains_spoiler = True
+                        break
+                if contains_spoiler:
+                    logger.info(f"Skipping potential spoiler review: '{video_title}'")
+                    continue
+            
+            elif allow_spoilers:
+                spoiler_keywords = ['spoiler', 'spoilers', 'ending explained', 'plot twist', 'reveals', 'full plot']
+                contains_spoiler = any(keyword.lower() in video_title.lower() for keyword in spoiler_keywords)
+                if contains_spoiler:
+                    logger.info(f"Found likely spoiler review: '{video_title}'")
 
             logger.info(f"Processing '{video_title}' by '{video_creator}'")
 
@@ -73,7 +89,8 @@ def get_video_transcripts(videos, movie, proxy=proxy):
                     'title': video_title,
                     'creator': video_creator,
                     'url': video_url,
-                    'transcript': full_transcript
+                    'transcript': full_transcript,
+                    'likely_has_spoilers': contains_spoiler if 'contains_spoiler' in locals() else False
                 })
                 logger.info("Transcript Retrieved")
             except Exception as e:
@@ -83,14 +100,20 @@ def get_video_transcripts(videos, movie, proxy=proxy):
     return video_transcripts
 
 
-def get_review_summary(chunk, movie):
+def get_review_summary(chunk, movie, allow_spoilers=False):
     video = f"review '{chunk['title']}' by '{chunk['creator']}'\n\n{chunk['transcript']}"
     logger.info('summarizing '+video.split('\n\n')[0])
+    
+    spoiler_instruction = ""
+    if not allow_spoilers:
+        spoiler_instruction = "IMPORTANT: Do not include any plot spoilers or key story revelations in your summary."
+    
     prompt = f"""
     You are an intelligent film critic.
     Your task is to write a summary of someone's review of the film "{movie}".
     If the provided review is not a dedicated review of "{movie}", just return 'Not a "{movie}" review'.
     Otherwise, summarize the review into around 1000 words.
+    {spoiler_instruction}
     I will provide the film review below:
     {video}
     """
@@ -133,8 +156,11 @@ def review_summary_parallel_with_retry(chunks, movie, max_workers=5):
 
 
 
-def get_final_summary(chunks, movie):
+def get_final_summary(chunks, movie, allow_spoilers=False):
     combined_reviews = '\n\n----------------------\n\n'.join(chunks)
+    spoiler_instruction = ""
+    if not allow_spoilers:
+        spoiler_instruction = "IMPORTANT: Do not include any plot spoilers or key story revelations in your summary."
     prompt = f"""
     You are an intelligent film critic. Your task is to write a film review.
     I will give you multiple different reviews about the film "{movie}".
@@ -143,6 +169,7 @@ def get_final_summary(chunks, movie):
     The summary review should be between 1500-2000 words in length.
     It should be written in essay format with no title where each paragraph is separated with newline separators. Do NOT include any bullet points.
     Dive into the summary review right away and do NOT include any introductory remarks such as "After going through the reviews".
+    {spoiler_instruction}
     I will provide the source reviews here:
     {combined_reviews}
     """
@@ -203,16 +230,20 @@ def create_podcast(review):
     return audio_buffer.read()
 
 
-def main(movie: str):
-    search_term = movie + ' movie review'
+def main(movie: str, allow_spoilers: bool = False):
+    if allow_spoilers:
+        search_term = movie + ' movie review spoiler'
+    else:
+        search_term = movie + ' movie review no spoilers'
     max_results = 5
     
     gcs_bucket_name = 'msds603_film_podcast'
     directory_name = movie.lower().replace(' ', '_')
-    podcast_gcs_path = f"{directory_name}/{directory_name}_podcast.mp3"
-    review_gcs_path = f"{directory_name}/{directory_name}_review_text.pkl"
+    spoiler_suffix = "_spoiler" if allow_spoilers else "_no_spoiler"
+    podcast_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}_podcast.mp3"
+    review_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}_review_text.pkl"
     transcripts_gcs_path = f"{directory_name}/{directory_name}_source_videos.pkl"
-
+    
     storage_client = storage.Client()
     bucket = storage_client.bucket(gcs_bucket_name)
 
@@ -233,7 +264,7 @@ def main(movie: str):
         return video_transcripts, review, podcast_bytes
 
 
-    logger.info(f'Searching YouTube for reviews on {movie}...')
+    logger.info(f'Searching YouTube for {"spoiler" if allow_spoilers else "non-spoiler"} reviews on {movie}...')
     videos = YoutubeSearch(search_term, max_results=max_results).to_dict()
     logger.info('Search complete, retrieving transcripts...')
     video_transcripts = get_video_transcripts(videos, movie)
@@ -262,7 +293,20 @@ def generate_podcast(movie_title):
 
 if __name__ == "__main__":
     st.title("CineCast AI")
-    movie_title = st.text_input("Enter movie title:")
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        movie_title = st.text_input("Enter movie title:")
+
+    with col2:
+        allow_spoilers = st.toggle("Include Spoilers", value=False, 
+                          help="Toggle ON to include plot details and spoilers in the review. Toggle OFF for a spoiler-free experience.")
+        
+        if allow_spoilers:
+            st.caption("🚨 Spoiler mode: The review may reveal major plot points and twists")
+        else:
+            st.caption("✅ Spoiler-free mode: No major plot reveals")
+
 
     if movie_title:
         with st.spinner(f"Searching for reviews and generating podcast for '{movie_title}', may take up to 10 minutes..."):
@@ -271,6 +315,7 @@ if __name__ == "__main__":
         st.subheader(f"Podcast for '{movie_title}' generated!")
         st.audio(podcast_bytes, format="audio/mp3")
 
+        spoiler_info = "with spoilers" if allow_spoilers else "spoiler-free"
         download_filename = f"{movie_title.replace(' ','_')}_podcast.mp3"
         st.download_button(
             label="Download Podcast",
@@ -293,3 +338,6 @@ if __name__ == "__main__":
 
             df = pd.DataFrame(video_review_data)
             st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
+        
+    st.markdown("---")
+    st.caption("Created by: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee")
