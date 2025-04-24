@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
 import pickle
-import io
-import time
 from google.cloud import storage
 from src.config import setup_logging, GCS_BUCKET_NAME
 from src.search import get_video_transcripts

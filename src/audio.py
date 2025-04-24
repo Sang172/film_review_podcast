@@ -1,4 +1,5 @@
 import io
+import time
 import logging
 from google.cloud import texttospeech_v1beta1 as texttospeech
 from pydub import AudioSegment
