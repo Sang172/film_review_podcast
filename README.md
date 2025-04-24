@@ -16,6 +16,8 @@ The application takes a movie title as input, searches YouTube for relevant revi
 - **Comprehensive Review Synthesis:** Combines and synthesizes the individual review summaries into a detailed and comprehensive overview of the movie.
 - **Spoiler Control:** Choose between spoiler and spoiler-free reviews with a simple toggle:
   - **Spoiler-Free Mode:** Specifically searches for non-spoiler reviews and filters out content that may reveal major plot points
+    - First filters videos based on title keywords that suggest spoiler content.
+    - Then uses LLM prompt engineering to exclude plot revelations during summarization.
   - **Spoiler Mode:** Includes detailed plot discussions and major revelations for those who have seen the movie or don't mind spoilers
 - **Podcast Generation:** Converts the final synthesized review into an audio podcast using Google Cloud Text-to-Speech.
 - **Streamlit Interface:** Provides a simple and user-friendly web interface to input the movie title and download the generated podcast.
