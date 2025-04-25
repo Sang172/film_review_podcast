@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import pickle
+import time
 from google.cloud import storage
 from src.config import setup_logging, GCS_BUCKET_NAME
 from src.search import get_video_transcripts
@@ -11,6 +12,7 @@ from youtube_search import YoutubeSearch
 logger = setup_logging()
 
 def main(movie: str, allow_spoilers: bool = False):
+    start_time = time.time()
     if allow_spoilers:
         search_term = movie + ' movie spoiler review'
     else:
@@ -78,6 +80,7 @@ def main(movie: str, allow_spoilers: bool = False):
     review_blob.upload_from_string(review_pickle_bytes, content_type='application/octet-stream')
     transcripts_blob.upload_from_string(transcripts_pickle_bytes, content_type='application/octet-stream')
     logger.info(f"Successfully saved results for '{movie}' (spoilers: {allow_spoilers}) to GCS.")
+    logger.info(f"Time taken: {(time.time() - start_time):.2f} seconds")
     return video_transcripts, review, podcast_bytes
 
 
@@ -94,52 +97,59 @@ if __name__ == "__main__":
     )
 
     st.title("🎬 CineCast AI")
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        movie_title = st.text_input("Enter movie title:")
 
-    with col2:
-        allow_spoilers = st.toggle("Include Spoilers", value=False, 
-                          help="Toggle ON to include plot details and spoilers in the review. Toggle OFF for a spoiler-free experience.")
-        
-        if allow_spoilers:
-            st.caption("🚨 Spoiler mode: The review may reveal major plot points and twists")
-        else:
-            st.caption("✅ Spoiler-free mode: No major plot reveals")
+    with st.form(key="podcast_input_form"):
+        col1, col2 = st.columns([2, 1])
 
+        with col1:
+            movie_title = st.text_input("Enter movie title:", key="movie_title_input")
 
-    if movie_title:
-        with st.spinner(f"Searching for reviews and generating {'' if allow_spoilers else 'spoiler-free '}podcast for '{movie_title}', may take up to 10 minutes..."):
-            video_transcripts, review, podcast_bytes = generate_podcast(movie_title, allow_spoilers=allow_spoilers)
+        with col2:
+            allow_spoilers = st.toggle("Include Spoilers", value=False,
+                              help="Toggle ON to include plot details and spoilers in the review. Toggle OFF for a spoiler-free experience.",
+                              key="spoiler_toggle")
 
-        st.subheader(f"Podcast for '{movie_title}' generated!")
-        st.audio(podcast_bytes, format="audio/mp3")
+            if allow_spoilers:
+                st.caption("🚨 Spoiler mode: The review may reveal major plot points and twists")
+            else:
+                st.caption("✅ Spoiler-free mode: No major plot reveals")
 
-        spoiler_info = "with_spoilers" if allow_spoilers else "spoiler_free"
-        download_filename = f"{movie_title.replace(' ','_')}_{spoiler_info}_podcast.mp3"
-        st.download_button(
-            label="Download Podcast",
-            data=podcast_bytes,
-            file_name=download_filename,
-            mime="audio/mp3",
-        )
+        submitted = st.form_submit_button("Generate Podcast")
 
-        with st.expander("Podcast Transcript"):
-            st.write(review)
+    if submitted:
+        if not movie_title:
+            st.warning("Please enter a movie title first!")
+        else:   
+            with st.spinner(f"Searching for reviews and generating {'' if allow_spoilers else 'spoiler-free '}podcast for '{movie_title}', may take up to 10 minutes..."):
+                video_transcripts, review, podcast_bytes = generate_podcast(movie_title, allow_spoilers=allow_spoilers)
 
-        with st.expander("Source Videos"):
-            video_review_data = []
-            for video_info in video_transcripts:
-                spoiler_tag = "🚨 Contains Spoilers" if video_info.get('likely_has_spoilers', False) else "✅ Spoiler-Free"
-                title = video_info['title']
-                creator = video_info['creator']
-                url = video_info['url']
-                markdown_link = f"[{title} by {creator}]({url}) - {spoiler_tag}"
-                video_review_data.append({"Reviews": markdown_link})
+            st.subheader(f"Podcast for '{movie_title}' generated!")
+            st.audio(podcast_bytes, format="audio/mp3")
 
-            df = pd.DataFrame(video_review_data)
-            st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
-        
+            spoiler_info = "with_spoilers" if allow_spoilers else "spoiler_free"
+            download_filename = f"{movie_title.replace(' ','_')}_{spoiler_info}_podcast.mp3"
+            st.download_button(
+                label="Download Podcast",
+                data=podcast_bytes,
+                file_name=download_filename,
+                mime="audio/mp3",
+            )
+
+            with st.expander("Podcast Transcript"):
+                st.write(review)
+
+            with st.expander("Source Videos"):
+                video_review_data = []
+                for video_info in video_transcripts:
+                    spoiler_tag = "🚨 Contains Spoilers" if video_info.get('likely_has_spoilers', False) else "✅ Spoiler-Free"
+                    title = video_info['title']
+                    creator = video_info['creator']
+                    url = video_info['url']
+                    markdown_link = f"[{title} by {creator}]({url}) - {spoiler_tag}"
+                    video_review_data.append({"Reviews": markdown_link})
+
+                df = pd.DataFrame(video_review_data)
+                st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
+            
     st.markdown("---")
     st.caption("Created by: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee")

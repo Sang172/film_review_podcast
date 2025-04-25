@@ -1,11 +1,11 @@
-import concurrent.futures
-import time
 import logging
+import asyncio
 from src.utils import get_gemini_response
 
 logger = logging.getLogger(__name__)
 
-def get_review_summary(chunk, movie, allow_spoilers=False):
+
+async def get_review_summary(chunk, movie, allow_spoilers=False):
     video = f"review '{chunk['title']}' by '{chunk['creator']}'\n\n{chunk['transcript']}"
     logger.info('summarizing '+video.split('\n\n')[0])
     
@@ -22,41 +22,43 @@ def get_review_summary(chunk, movie, allow_spoilers=False):
     I will provide the film review below:
     {video}
     """
-    podcast_transcript = get_gemini_response(prompt)
-    return podcast_transcript
+    summary = await get_gemini_response(prompt)
+    return summary
 
-def review_summary_with_retry(chunk, movie, max_retries=10, initial_delay=5, allow_spoilers=False):
+
+async def review_summary_with_retry(chunk, movie, max_retries=20, initial_delay=5, allow_spoilers=False):
 
     retries = 0
     delay = initial_delay
     while retries <= max_retries:
         try:
-            return get_review_summary(chunk, movie, allow_spoilers=allow_spoilers)
-        except:
-            logger.info(f"Error processing chunk '{chunk.get('title', 'Unknown')}' (Retry {retries + 1}/{max_retries})")
+            return await get_review_summary(chunk, movie, allow_spoilers=allow_spoilers)
+        except Exception as e:
+            logger.info(f"Error processing chunk '{chunk.get('title', 'Unknown')}' (Retry {retries + 1}/{max_retries}): {e}")
             if retries < max_retries:
                 logger.info(f"Waiting {delay} seconds before retrying...")
-                time.sleep(delay)
-                delay *= 2
+                await asyncio.sleep(delay)
+                delay *= 1
                 retries += 1
             else:
-                logger.info(f"Max retries reached for chunk '{chunk.get('title', 'Unknown')}'. Skipping.")
-                return None
+                logger.error(f"Max retries reached for chunk '{chunk.get('title', 'Unknown')}'. Skipping. Error: {e}")
+                return ""
             
 
-def review_summary_parallel_with_retry(chunks, movie, max_workers=5, allow_spoilers=False):
+async def _review_summary_parallel_with_retry(chunks, movie, allow_spoilers=False):
 
-    results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_chunk = {executor.submit(review_summary_with_retry, chunk, movie, allow_spoilers): chunk for chunk in chunks}
-        for future in concurrent.futures.as_completed(future_to_chunk):
-            chunk = future_to_chunk[future]
-            try:
-                result = future.result()
-                results.append(result)
-            except:
-                pass
+    tasks = []
 
+    for chunk in chunks:
+        task = asyncio.create_task(review_summary_with_retry(chunk, movie, allow_spoilers=allow_spoilers))
+        tasks.append(task)
+
+    results = await asyncio.gather(*tasks)
+
+    return results
+
+def review_summary_parallel_with_retry(chunks, movie, allow_spoilers=False):
+    results = asyncio.run(_review_summary_parallel_with_retry(chunks=chunks, movie=movie, allow_spoilers=allow_spoilers))
     return results
 
 def get_final_summary(chunks, movie, allow_spoilers=False):
@@ -76,5 +78,5 @@ def get_final_summary(chunks, movie, allow_spoilers=False):
     I will provide the source reviews here:
     {combined_reviews}
     """
-    review = get_gemini_response(prompt)
+    review = asyncio.run(get_gemini_response(prompt))
     return review
