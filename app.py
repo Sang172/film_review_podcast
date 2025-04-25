@@ -80,7 +80,7 @@ def main(movie: str, allow_spoilers: bool = False):
     review_blob.upload_from_string(review_pickle_bytes, content_type='application/octet-stream')
     transcripts_blob.upload_from_string(transcripts_pickle_bytes, content_type='application/octet-stream')
     logger.info(f"Successfully saved results for '{movie}' (spoilers: {allow_spoilers}) to GCS.")
-    logger.info(f"Time taken: {(time.time() - start_time):.2f} seconds")
+    logger.info(f"Time taken for '{movie}': {(time.time() - start_time):.2f} seconds")
     return video_transcripts, review, podcast_bytes
 
 
