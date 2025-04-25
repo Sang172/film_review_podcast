@@ -37,7 +37,7 @@ async def get_single_trasncript(video, movie, proxy=proxy, allow_spoilers=False)
 
 
         try:
-            transcript_list = await asyncio.to_trhead(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'], proxies=proxies)
+            transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'], proxies=proxies)
             # transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'])
 
             full_transcript = " ".join([item['text'] for item in transcript_list])
