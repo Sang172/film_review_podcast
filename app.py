@@ -98,35 +98,34 @@ if __name__ == "__main__":
 
     st.title("🎬 CineCast AI")
 
+    st.session_state.allow_spoilers = st.toggle(
+        "Include Spoilers",
+        value=st.session_state.get("allow_spoilers", False),
+        help="Toggle ON to include plot details and spoilers in the review. Toggle OFF for a spoiler-free experience.",
+        key="spoiler_toggle",
+        on_change=lambda: None
+    )
+
+    if st.session_state.allow_spoilers:
+        st.caption("🚨 Spoiler mode: The review may reveal major plot points and twists")
+    else:
+        st.caption("✅ Spoiler-free mode: No major plot reveals")
+
     with st.form(key="podcast_input_form"):
-        col1, col2 = st.columns([2, 1])
-
-        with col1:
-            movie_title = st.text_input("Enter movie title:", key="movie_title_input")
-
-        with col2:
-            allow_spoilers = st.toggle("Include Spoilers", value=False,
-                              help="Toggle ON to include plot details and spoilers in the review. Toggle OFF for a spoiler-free experience.",
-                              key="spoiler_toggle")
-
-            if allow_spoilers:
-                st.caption("🚨 Spoiler mode: The review may reveal major plot points and twists")
-            else:
-                st.caption("✅ Spoiler-free mode: No major plot reveals")
-
+        movie_title = st.text_input("Enter movie title:", key="movie_title_input")
         submitted = st.form_submit_button("Generate Podcast")
 
     if submitted:
         if not movie_title:
             st.warning("Please enter a movie title first!")
         else:   
-            with st.spinner(f"Searching for reviews and generating {'' if allow_spoilers else 'spoiler-free '}podcast for '{movie_title}', may take up to 10 minutes..."):
-                video_transcripts, review, podcast_bytes = generate_podcast(movie_title, allow_spoilers=allow_spoilers)
+            with st.spinner(f"Searching for reviews and generating {'' if st.session_state.allow_spoilers else 'spoiler-free '}podcast for '{movie_title}', may take up to 3 minutes..."):
+                video_transcripts, review, podcast_bytes = generate_podcast(movie_title, allow_spoilers=st.session_state.allow_spoilers)
 
             st.subheader(f"Podcast for '{movie_title}' generated!")
             st.audio(podcast_bytes, format="audio/mp3")
 
-            spoiler_info = "with_spoilers" if allow_spoilers else "spoiler_free"
+            spoiler_info = "with_spoilers" if st.session_state.allow_spoilers else "spoiler_free"
             download_filename = f"{movie_title.replace(' ','_')}_{spoiler_info}_podcast.mp3"
             st.download_button(
                 label="Download Podcast",
