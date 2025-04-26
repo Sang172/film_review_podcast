@@ -1,7 +1,9 @@
 from src.config import llm
+import asyncio
 
-def get_gemini_response(prompt):
-    return llm.generate_content(prompt).text.strip()
+async def get_gemini_response(prompt):
+    response = await asyncio.to_thread(llm.generate_content, prompt)
+    return response.text.strip()
 
 def is_spoiler_review(title):
     title_lower = title.lower()

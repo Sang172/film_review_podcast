@@ -7,3 +7,9 @@ service-account.json
 __pycache__/
 *.py[cod]
 *$py.class
+*.ipynb
+*.pickle
+*.keras
+*.mp4
+*.mp3
+*.csv
