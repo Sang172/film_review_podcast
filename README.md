@@ -20,14 +20,19 @@ The application takes a movie title as input, searches YouTube for relevant revi
 
 ## Features
 
-- **YouTube Review Search:** Automatically searches YouTube for movie reviews based on the provided title.
-- **Transcript Retrieval:** Fetches the transcripts for relevant YouTube review videos.
-- **Individual Review Summarization:** Utilizes the Gemini LLM to generate concise summaries of each identified review.
-- **Comprehensive Review Synthesis:** Combines and synthesizes the individual review summaries into a detailed and comprehensive overview of the movie.
-- **Spoiler Control:** Choose between spoiler and spoiler-free reviews with a simple toggle:
-  - **Spoiler-Free Mode:** Specifically searches for non-spoiler reviews and filters out content that may reveal major plot points
-    - First filters videos based on title keywords that suggest spoiler content.
-    - Then uses LLM prompt engineering to exclude plot revelations during summarization.
-  - **Spoiler Mode:** Includes detailed plot discussions and major revelations for those who have seen the movie or don't mind spoilers
-- **Podcast Generation:** Converts the final synthesized review into an audio podcast using Google Cloud Text-to-Speech.
-- **Streamlit Interface:** Provides a simple and user-friendly web interface to input the movie title and download the generated podcast.
+-   **YouTube Review Search:** Automatically searches YouTube for movie reviews based on the provided title.
+-   **Transcript Retrieval:** Fetches the transcripts for relevant YouTube review videos.
+-   **Individual Review Summarization:** Utilizes the Gemini LLM to generate concise summaries of each identified review.
+-   **Comprehensive Review Synthesis:** Combines and synthesizes the individual review summaries into a detailed and comprehensive overview of the movie.
+-   **Spoiler Control:** Choose between spoiler and spoiler-free reviews with a simple toggle:
+    *   **Spoiler-Free Mode:** Specifically searches for non-spoiler reviews and filters out content that may reveal major plot points. Filters videos based on title keywords and uses LLM prompt engineering to exclude plot revelations during summarization.
+    *   **Spoiler Mode:** Includes detailed plot discussions and major revelations for those who have seen the movie or don't mind spoilers.
+-   **Customizable Podcast Length:** Select your preferred podcast duration to tailor the listening experience:
+    *   **Clip (~3 min):** A quick glimpse — perfect for when you're short on time.
+    *   **Reel (~7 min):** A fast-paced review you can enjoy with your coffee.
+    *   **Feature (~12 min):** The default, full movie experience — detailed, thoughtful, and complete.
+    *   **Epic (~20 min):** A deep dive into the film’s world, characters, and craft.
+    *   **Saga (~30 min):** An extended journey through every corner of the movie’s universe.
+-   **Podcast Generation:** Converts the final synthesized review into an audio podcast using Google Cloud Text-to-Speech.
+-   **Caching:** Utilizes Google Cloud Storage to cache generated reviews and podcasts, significantly speeding up requests for previously processed movies, spoiler preferences, and lengths.
+-   **Streamlit Interface:** Provides a simple and user-friendly web interface to input the movie title, select preferences, and download the generated podcast.
