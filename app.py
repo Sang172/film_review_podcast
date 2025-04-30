@@ -18,7 +18,7 @@ def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFA
         search_term = movie + ' movie spoiler review'
     else:
         search_term = movie + ' movie no spoiler review'
-    max_results = 20
+    max_results = 5
 
     gcs_bucket_name = GCS_BUCKET_NAME
     directory_name = movie.lower().replace(' ', '_')
