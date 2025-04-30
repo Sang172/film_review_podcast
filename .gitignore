@@ -13,3 +13,5 @@ __pycache__/
 *.mp4
 *.mp3
 *.csv
+.DS_Store
+venv/

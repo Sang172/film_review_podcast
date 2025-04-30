@@ -61,22 +61,31 @@ def review_summary_parallel_with_retry(chunks, movie, allow_spoilers=False):
     results = asyncio.run(_review_summary_parallel_with_retry(chunks=chunks, movie=movie, allow_spoilers=allow_spoilers))
     return results
 
-def get_final_summary(chunks, movie, allow_spoilers=False):
-    combined_reviews = '\n\n----------------------\n\n'.join(chunks)
+
+def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruction: str = "between 1500 and 2000 words"):
+    valid_chunks = [chunk for chunk in chunks if chunk and isinstance(chunk, str)]
+    if not valid_chunks:
+        logger.warning(f"No valid review summaries provided for final synthesis of '{movie}'.")
+        return f"Could not generate a final summary for {movie} as no valid source review summaries were available."
+
+    combined_reviews = '\n\n----------------------\n\n'.join(valid_chunks)
     spoiler_instruction = ""
     if not allow_spoilers:
         spoiler_instruction = "IMPORTANT: Do not include any plot spoilers or key story revelations in your summary."
+
+    length_req = f"The summary review should be {length_prompt_instruction} in length."
+
     prompt = f"""
-    You are an intelligent film critic. Your task is to write a film review.
-    I will give you multiple different reviews about the film "{movie}".
-    Combine the information in the reviews to produce a single summary review that offers the most comprehensive overview.
-    If there is any review that is related to movies other than "{movie}", ignore that review.
-    The summary review should be between 1500-2000 words in length.
-    It should be written in essay format with no title where each paragraph is separated with newline separators. Do NOT include any bullet points.
-    Dive into the summary review right away and do NOT include any introductory remarks such as "After going through the reviews".
-    {spoiler_instruction}
-    I will provide the source reviews here:
-    {combined_reviews}
-    """
+                You are an intelligent film critic. Your task is to write a film review.
+                I will give you multiple different reviews about the film "{movie}".
+                Combine the information in the reviews to produce a single summary review that offers the most comprehensive overview.
+                If there is any review that is related to movies other than "{movie}", ignore that review.
+                {length_req}
+                It should be written in essay format with no title where each paragraph is separated with newline separators. Do NOT include any bullet points.
+                Dive into the summary review right away and do NOT include any introductory remarks such as "After going through the reviews".
+                {spoiler_instruction}
+                I will provide the source reviews here:
+                {combined_reviews}
+                """
     review = asyncio.run(get_gemini_response(prompt))
     return review
