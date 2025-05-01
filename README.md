@@ -31,8 +31,6 @@ The application takes a movie title as input, searches YouTube for relevant revi
     *   **Clip (~3 min):** A quick glimpse — perfect for when you're short on time.
     *   **Reel (~7 min):** A fast-paced review you can enjoy with your coffee.
     *   **Feature (~12 min):** The default, full movie experience — detailed, thoughtful, and complete.
-    *   **Epic (~20 min):** A deep dive into the film’s world, characters, and craft.
-    *   **Saga (~30 min):** An extended journey through every corner of the movie’s universe.
 -   **Podcast Generation:** Converts the final synthesized review into an audio podcast using Google Cloud Text-to-Speech.
 -   **Caching:** Utilizes Google Cloud Storage to cache generated reviews and podcasts, significantly speeding up requests for previously processed movies, spoiler preferences, and lengths.
 -   **Streamlit Interface:** Provides a simple and user-friendly web interface to input the movie title, select preferences, and download the generated podcast.

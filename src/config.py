@@ -43,21 +43,21 @@ PODCAST_LENGTH_OPTIONS = {
         "ui_label": "Feature (~12 min) - Default",
         "help_text": "The full movie experience — detailed, thoughtful, and complete.",
         "filename_suffix": "" # No suffix for default to match existing cache
-    },
-    "Epic": {
-        "prompt_instruction": "between 2500 and 3500 words",
-        "ui_label": "Epic (~20 min)",
-        "help_text": "A deep dive into the film’s world, characters, and craft.",
-        "filename_suffix": "_epic"
-    },
-    "Saga": {
-        "prompt_instruction": "between 4500 and 5000 words",
-        "ui_label": "Saga (~30 min)",
-        "help_text": "An extended journey through every corner of the movie’s universe.",
-        "filename_suffix": "_saga"
     }
+    # "Epic": { Temporarily disabled due to length instructions not being followed
+    #     "prompt_instruction": "between 2500 and 3500 words",
+    #     "ui_label": "Epic (~20 min)",
+    #     "help_text": "A deep dive into the film’s world, characters, and craft.",
+    #     "filename_suffix": "_epic"
+    # },
+    # "Saga": {
+    #     "prompt_instruction": "between 4500 and 5000 words",
+    #     "ui_label": "Saga (~30 min)",
+    #     "help_text": "An extended journey through every corner of the movie’s universe.",
+    #     "filename_suffix": "_saga"
+    # }
 }
 # Order for UI display
-LENGTH_PREFERENCE_ORDER = ["Clip", "Reel", "Feature", "Epic", "Saga"]
+LENGTH_PREFERENCE_ORDER = ["Clip", "Reel", "Feature"] # "Epic", "Saga"]
 # Default selection key
 DEFAULT_LENGTH_PREFERENCE = "Feature"
