@@ -7,10 +7,12 @@ from src.config import setup_logging, GCS_BUCKET_NAME
 from src.config import PODCAST_LENGTH_OPTIONS, LENGTH_PREFERENCE_ORDER, DEFAULT_LENGTH_PREFERENCE
 from src.search import get_video_transcripts
 from src.review import review_summary_parallel_with_retry, get_final_summary
+from src.utils import find_similar_movie_imdb
 from src.audio import create_podcast
 from youtube_search import YoutubeSearch
 
 logger = setup_logging()
+
 
 def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFAULT_LENGTH_PREFERENCE):
     start_time = time.time()
@@ -25,10 +27,12 @@ def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFA
     spoiler_suffix = "_spoiler" if allow_spoilers else "_no_spoiler"
 
     try:
-        length_options = PODCAST_LENGTH_OPTIONS.get(length_preference, PODCAST_LENGTH_OPTIONS[DEFAULT_LENGTH_PREFERENCE])
+        length_options = PODCAST_LENGTH_OPTIONS.get(
+            length_preference, PODCAST_LENGTH_OPTIONS[DEFAULT_LENGTH_PREFERENCE])
         length_suffix = length_options["filename_suffix"]
     except KeyError:
-        logger.error(f"Invalid length_preference '{length_preference}' and fallback failed. Using empty suffix.")
+        logger.error(
+            f"Invalid length_preference '{length_preference}' and fallback failed. Using empty suffix.")
         length_suffix = ""
 
     podcast_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}{length_suffix}_podcast.mp3"
@@ -53,41 +57,53 @@ def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFA
         review = pickle.loads(review_pickle_bytes)
         video_transcripts = pickle.loads(transcripts_pickle_bytes)
 
-        logger.info(f"Successfully loaded cached data for '{movie}'{cache_log_suffix} from GCS.")
+        logger.info(
+            f"Successfully loaded cached data for '{movie}'{cache_log_suffix} from GCS.")
         return video_transcripts, review, podcast_bytes
 
-    logger.info(f"Cache miss for '{movie}'{cache_log_suffix}. Generating new review.")
+    logger.info(
+        f"Cache miss for '{movie}'{cache_log_suffix}. Generating new review.")
 
-    logger.info(f'Searching YouTube for {"spoiler" if allow_spoilers else "non-spoiler"} reviews on {movie}...')
+    logger.info(
+        f'Searching YouTube for {"spoiler" if allow_spoilers else "non-spoiler"} reviews on {movie}...')
     videos = YoutubeSearch(search_term, max_results=max_results).to_dict()
     logger.info('Search complete, retrieving transcripts...')
-    video_transcripts = get_video_transcripts(videos, movie, allow_spoilers=allow_spoilers)
+    video_transcripts = get_video_transcripts(
+        videos, movie, allow_spoilers=allow_spoilers)
 
     if len(video_transcripts) < 2:
-        logger.info(f"Not enough reviews found. Trying a more general search...")
+        logger.info(
+            f"Not enough reviews found. Trying a more general search...")
         general_search = movie + " movie review"
-        additional_videos = YoutubeSearch(general_search, max_results=max_results).to_dict()
-        additional_transcripts = get_video_transcripts(additional_videos, movie, allow_spoilers=allow_spoilers)
+        additional_videos = YoutubeSearch(
+            general_search, max_results=max_results).to_dict()
+        additional_transcripts = get_video_transcripts(
+            additional_videos, movie, allow_spoilers=allow_spoilers)
         existing_ids = {v['url'] for v in video_transcripts}
         for transcript in additional_transcripts:
             if transcript['url'] not in existing_ids:
                 video_transcripts.append(transcript)
 
     logger.info('Retrieval complete, analyzing reviews...')
-    reviews = review_summary_parallel_with_retry(video_transcripts, movie, allow_spoilers=allow_spoilers)
+    reviews = review_summary_parallel_with_retry(
+        video_transcripts, movie, allow_spoilers=allow_spoilers)
 
     if not reviews:
         logger.error("No valid reviews could be processed")
         return video_transcripts, "No valid reviews could be processed for this movie.", None
 
     try:
-        length_options = PODCAST_LENGTH_OPTIONS.get(length_preference, PODCAST_LENGTH_OPTIONS[DEFAULT_LENGTH_PREFERENCE])
+        length_options = PODCAST_LENGTH_OPTIONS.get(
+            length_preference, PODCAST_LENGTH_OPTIONS[DEFAULT_LENGTH_PREFERENCE])
         final_summary_length_instruction = length_options["prompt_instruction"]
     except KeyError:
-        logger.error(f"Invalid length_preference '{length_preference}' for final summary. Using default instruction.")
-        final_summary_length_instruction = PODCAST_LENGTH_OPTIONS[DEFAULT_LENGTH_PREFERENCE]["prompt_instruction"]
+        logger.error(
+            f"Invalid length_preference '{length_preference}' for final summary. Using default instruction.")
+        final_summary_length_instruction = PODCAST_LENGTH_OPTIONS[
+            DEFAULT_LENGTH_PREFERENCE]["prompt_instruction"]
 
-    logger.info(f'Generating final summary with target length: "{final_summary_length_instruction}"')
+    logger.info(
+        f'Generating final summary with target length: "{final_summary_length_instruction}"')
     review = get_final_summary(
         reviews,
         movie,
@@ -104,10 +120,14 @@ def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFA
     transcripts_pickle_bytes = pickle.dumps(video_transcripts)
 
     podcast_blob.upload_from_string(podcast_bytes, content_type='audio/mpeg')
-    review_blob.upload_from_string(review_pickle_bytes, content_type='application/octet-stream')
-    transcripts_blob.upload_from_string(transcripts_pickle_bytes, content_type='application/octet-stream')
-    logger.info(f"Successfully saved results for '{movie}'{cache_log_suffix} to GCS.")
-    logger.info(f"Time taken for '{movie}': {(time.time() - start_time):.2f} seconds")
+    review_blob.upload_from_string(
+        review_pickle_bytes, content_type='application/octet-stream')
+    transcripts_blob.upload_from_string(
+        transcripts_pickle_bytes, content_type='application/octet-stream')
+    logger.info(
+        f"Successfully saved results for '{movie}'{cache_log_suffix} to GCS.")
+    logger.info(
+        f"Time taken for '{movie}': {(time.time() - start_time):.2f} seconds")
     return video_transcripts, review, podcast_bytes
 
 
@@ -131,12 +151,18 @@ if __name__ == "__main__":
 
     st.subheader("Select Podcast Length")
 
-    ordered_labels = [PODCAST_LENGTH_OPTIONS[key]["ui_label"] for key in LENGTH_PREFERENCE_ORDER]
+    ordered_labels = [PODCAST_LENGTH_OPTIONS[key]["ui_label"]
+                      for key in LENGTH_PREFERENCE_ORDER]
     ordered_keys = LENGTH_PREFERENCE_ORDER
 
     default_index = ordered_keys.index(DEFAULT_LENGTH_PREFERENCE)
 
-    current_length_key = st.session_state.get("length_preference", DEFAULT_LENGTH_PREFERENCE)
+    found_flag = False
+
+    found_flag = False
+
+    current_length_key = st.session_state.get(
+        "length_preference", DEFAULT_LENGTH_PREFERENCE)
     try:
         current_index = ordered_keys.index(current_length_key)
     except ValueError:
@@ -150,7 +176,8 @@ if __name__ == "__main__":
         key="length_label_select"
     )
 
-    selected_length_key = next(key for key, val in PODCAST_LENGTH_OPTIONS.items() if val["ui_label"] == selected_label)
+    selected_length_key = next(key for key, val in PODCAST_LENGTH_OPTIONS.items(
+    ) if val["ui_label"] == selected_label)
     st.session_state.length_preference = selected_length_key
 
     st.session_state.allow_spoilers = st.toggle(
@@ -158,22 +185,105 @@ if __name__ == "__main__":
         value=st.session_state.get("allow_spoilers", False),
         help="Toggle ON to include plot details and spoilers. Toggle OFF for a spoiler-free experience.",
         key="spoiler_toggle",
-        on_change=lambda: st.session_state.update(allow_spoilers=st.session_state.spoiler_toggle)
+        on_change=lambda: st.session_state.update(
+            allow_spoilers=st.session_state.spoiler_toggle)
     )
 
     if st.session_state.allow_spoilers:
-        st.caption("🚨 Spoiler mode: The review may reveal major plot points and twists")
+        st.caption(
+            "🚨 Spoiler mode: The review may reveal major plot points and twists")
     else:
         st.caption("✅ Spoiler-free mode: No major plot reveals")
 
-    with st.form(key="podcast_input_form"):
-        movie_title = st.text_input("Enter movie title:", key="movie_title_input")
-        submitted = st.form_submit_button("Generate Podcast")
+    # Search container with input and button
+    with st.form(key="search_form"):
+        cols = st.columns([7, 1])
+        with cols[0]:
+            movie_title = st.text_input(
+                "Enter movie title:",
+                key="movie_title_input",
+                label_visibility="collapsed",
+                placeholder="Search for a movie..."
+            )
+        with cols[1]:
+            searchMovie = st.form_submit_button("Search")
 
-    if submitted:
+    # Handle form submission
+    if searchMovie and movie_title:
+        # Call your function here - mock data for demonstration
+        found_flag, movie_details = find_similar_movie_imdb(movie_title)
+        if found_flag:
+            movie_title = movie_details['title'] + \
+                " (" + str(movie_details['release_date']) + ")"
+            director = movie_details.get('director') if movie_details.get(
+                'director') else "Unknown"
+            description = movie_details.get('description')
+
+            # Display movie information using a single HTML block
+            st.markdown(f"""
+                <div class="movie-card">
+                    <div class="poster-container">
+                        <img src="{movie_details['poster']}" class="movie-poster">
+                    </div>
+                    <div class="movie-info">
+                        <h1>{movie_title}</h1>
+                        <h3>Directed by: {director}</h3>
+                        <p class="movie-summary">Summary: {description}</p>
+                    </div>
+                </div>
+                
+                <style>
+                    .movie-card {{
+                        border: 1px solid #e0e0e0;
+                        border-radius: 15px;
+                        padding: 20px;
+                        margin: 20px 0;
+                        display: flex;
+                        gap: 25px;
+                        align-items: flex-start;
+                        background: #03002E;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    }}
+                    
+                    .poster-container {{
+                        flex-shrink: 0;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        border: 1px solid #f0f0f0;
+                    }}
+                    
+                    .movie-poster {{
+                        width: 200px;
+                        height: auto;
+                        display: block;
+                    }}
+                    
+                    .movie-info h1 {{
+                        margin: 0 0 8px 0;
+                        color: #fff;
+                        font-size: 28px;
+                    }}
+                    
+                    .movie-info h3 {{
+                        margin: 0 0 12px 0;
+                        color: #fff;
+                        font-size: 18px;
+                    }}
+                    
+                    .movie-summary {{
+                        margin: 4px 0;
+                        color: #fff;
+                        font-size: 16px;
+                    }}
+                </style>
+            """, unsafe_allow_html=True)
+        else:
+            st.error("Movie not found. Please try another title.")
+
+    if found_flag:
         if not movie_title:
             st.warning("Please enter a movie title first!")
-        else:   
+        else:
             with st.spinner(f"Searching for reviews and generating {'' if st.session_state.allow_spoilers else 'spoiler-free '}podcast for '{movie_title}', may take up to 3 minutes..."):
                 video_transcripts, review, podcast_bytes = generate_podcast(
                     movie_title,
@@ -186,7 +296,7 @@ if __name__ == "__main__":
 
             spoiler_info = "with_spoilers" if st.session_state.allow_spoilers else "spoiler_free"
             length_tag = st.session_state.length_preference.lower()
-            download_filename = f"{movie_title.replace(' ','_')}_{spoiler_info}_{length_tag}_podcast.mp3"
+            download_filename = f"{movie_title.replace(' ', '_')}_{spoiler_info}_{length_tag}_podcast.mp3"
             st.download_button(
                 label="Download Podcast",
                 data=podcast_bytes,
@@ -200,7 +310,8 @@ if __name__ == "__main__":
             with st.expander("Source Videos"):
                 video_review_data = []
                 for video_info in video_transcripts:
-                    spoiler_tag = "🚨 Contains Spoilers" if video_info.get('likely_has_spoilers', False) else "✅ Spoiler-Free"
+                    spoiler_tag = "🚨 Contains Spoilers" if video_info.get(
+                        'likely_has_spoilers', False) else "✅ Spoiler-Free"
                     title = video_info['title']
                     creator = video_info['creator']
                     url = video_info['url']
@@ -208,7 +319,9 @@ if __name__ == "__main__":
                     video_review_data.append({"Reviews": markdown_link})
 
                 df = pd.DataFrame(video_review_data)
-                st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
-            
+                st.markdown(df.to_markdown(index=False),
+                            unsafe_allow_html=True)
+
     st.markdown("---")
-    st.caption("Created by: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee")
+    st.caption(
+        "Created by: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee")
