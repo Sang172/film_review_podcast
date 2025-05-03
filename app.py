@@ -7,6 +7,7 @@ from src.config import setup_logging, GCS_BUCKET_NAME
 from src.config import PODCAST_LENGTH_OPTIONS, LENGTH_PREFERENCE_ORDER, DEFAULT_LENGTH_PREFERENCE
 from src.search import get_video_transcripts
 from src.review import review_summary_parallel_with_retry, get_final_summary
+from src.utils import find_similar_movie_imdb
 # from src.audio import create_podcast
 from youtube_search import YoutubeSearch
 
@@ -156,6 +157,8 @@ if __name__ == "__main__":
 
     default_index = ordered_keys.index(DEFAULT_LENGTH_PREFERENCE)
 
+    found_flag = False
+
     current_length_key = st.session_state.get(
         "length_preference", DEFAULT_LENGTH_PREFERENCE)
     try:
@@ -190,12 +193,97 @@ if __name__ == "__main__":
     else:
         st.caption("✅ Spoiler-free mode: No major plot reveals")
 
-    with st.form(key="podcast_input_form"):
-        movie_title = st.text_input(
-            "Enter movie title:", key="movie_title_input")
-        submitted = st.form_submit_button("Generate Podcast")
+    # with st.form(key="podcast_input_form"):
+    #     movie_title = st.text_input(
+    #         "Enter movie title:", key="movie_title_input")
+    #     submitted = st.form_submit_button("Generate Podcast")
 
-    if submitted:
+    # Search container with input and button
+    with st.form(key="search_form"):
+        cols = st.columns([7, 1])
+        with cols[0]:
+            movie_title = st.text_input(
+                "Enter movie title:",
+                key="movie_title_input",
+                label_visibility="collapsed",
+                placeholder="Search for a movie..."
+            )
+        with cols[1]:
+            searchMovie = st.form_submit_button("Search")
+
+    # Handle form submission
+    if searchMovie and movie_title:
+        # Call your function here - mock data for demonstration
+        found_flag, movie_details = find_similar_movie_imdb(movie_title)
+        if found_flag:
+            movie_title = movie_details['title'] + \
+                " (" + str(movie_details['release_date']) + ")"
+            director = movie_details.get('director') if movie_details.get(
+                'director') else "Unknown"
+            description = movie_details.get('description')
+
+            # Display movie information using a single HTML block
+            st.markdown(f"""
+                <div class="movie-card">
+                    <div class="poster-container">
+                        <img src="{movie_details['poster']}" class="movie-poster">
+                    </div>
+                    <div class="movie-info">
+                        <h1>{movie_title}</h1>
+                        <h3>Directed by: {director}</h3>
+                        <p class="movie-summary">Summary: {description}</p>
+                    </div>
+                </div>
+                
+                <style>
+                    .movie-card {{
+                        border: 1px solid #e0e0e0;
+                        border-radius: 15px;
+                        padding: 20px;
+                        margin: 20px 0;
+                        display: flex;
+                        gap: 25px;
+                        align-items: flex-start;
+                        background: #03002E;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                    }}
+                    
+                    .poster-container {{
+                        flex-shrink: 0;
+                        border-radius: 8px;
+                        overflow: hidden;
+                        border: 1px solid #f0f0f0;
+                    }}
+                    
+                    .movie-poster {{
+                        width: 200px;
+                        height: auto;
+                        display: block;
+                    }}
+                    
+                    .movie-info h1 {{
+                        margin: 0 0 8px 0;
+                        color: #fff;
+                        font-size: 28px;
+                    }}
+                    
+                    .movie-info h3 {{
+                        margin: 0 0 12px 0;
+                        color: #fff;
+                        font-size: 18px;
+                    }}
+                    
+                    .movie-summary {{
+                        margin: 4px 0;
+                        color: #fff;
+                        font-size: 16px;
+                    }}
+                </style>
+            """, unsafe_allow_html=True)
+        else:
+            st.error("Movie not found. Please try another title.")
+
+    if found_flag:
         if not movie_title:
             st.warning("Please enter a movie title first!")
         else:
