@@ -1,13 +1,13 @@
-# Ignore credentials and environment config
+# Environment and credentials
 .env
 *.json
 keys/
 
-# Python cache and virtualenv
+# Python artifacts
 __pycache__/
 venv/
 
-# Streamlit config/state
+# Streamlit config
 .streamlit/
 
 # OS & editor cruft
