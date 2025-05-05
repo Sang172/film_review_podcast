@@ -1,0 +1,15 @@
+# Ignore credentials and environment config
+.env
+*.json
+keys/
+
+# Python cache and virtualenv
+__pycache__/
+venv/
+
+# Streamlit config/state
+.streamlit/
+
+# OS & editor cruft
+.DS_Store
+*.swp
