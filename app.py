@@ -12,12 +12,12 @@ from src.audio import create_podcast
 from youtube_search import YoutubeSearch
 from dotenv import load_dotenv
 import os
-from google.oauth2.service_account import Credentials
+#from google.oauth2.service_account import Credentials
 from datetime import datetime
 
 load_dotenv()
-credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-credentials = Credentials.from_service_account_file(credentials_path)
+#credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+#credentials = Credentials.from_service_account_file(credentials_path)
 
 logger = setup_logging()
 
@@ -47,7 +47,8 @@ def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFA
     review_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}{length_suffix}_review_text.pkl"
     transcripts_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}_source_videos.pkl"
 
-    storage_client = storage.Client(credentials=credentials)
+    #storage_client = storage.Client(credentials=credentials)
+    storage_client = storage.Client()
     bucket = storage_client.bucket(gcs_bucket_name)
 
     podcast_blob = bucket.blob(podcast_gcs_path)
