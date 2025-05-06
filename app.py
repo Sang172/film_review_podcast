@@ -10,6 +10,14 @@ from src.review import review_summary_parallel_with_retry, get_final_summary
 from src.utils import find_similar_movie_imdb
 from src.audio import create_podcast
 from youtube_search import YoutubeSearch
+from dotenv import load_dotenv
+import os
+from google.oauth2.service_account import Credentials
+from datetime import datetime
+
+load_dotenv()
+credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+credentials = Credentials.from_service_account_file(credentials_path)
 
 logger = setup_logging()
 
@@ -39,7 +47,7 @@ def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFA
     review_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}{length_suffix}_review_text.pkl"
     transcripts_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}_source_videos.pkl"
 
-    storage_client = storage.Client()
+    storage_client = storage.Client(credentials=credentials)
     bucket = storage_client.bucket(gcs_bucket_name)
 
     podcast_blob = bucket.blob(podcast_gcs_path)
@@ -140,188 +148,325 @@ def generate_podcast(movie_title, allow_spoilers=False, length_preference: str =
     )
     return video_transcripts, review, podcast_bytes
 
+def render_header():
+    st.markdown(
+        """
+        <style>
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .logo-text {
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+        }
+        .nav-links a {
+            margin-left: 1.2rem;
+            font-size: 16px;
+            color: white;
+            text-decoration: none;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        </style>
+        <div class="header-container">
+            <div class="logo-text">🎬 CineCast <span style="font-weight:300;">AI</span></div>
+            <div class="nav-links">
+                <a href="#">Home</a>
+                <a href="#">Podcasts</a>
+                <a href="#">About</a>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
-    st.set_page_config(
-        page_title="CineCast AI",
-        page_icon="🎬"
+    st.set_page_config(page_title="CineCast AI", page_icon="🎬")
+    render_header()
+
+    # ─── Custom Dark-Card Styles ───
+    st.markdown(
+        """
+        <style>
+        body, .stApp {
+            background-color: #1c1c1c;
+            color: #f5f5f5;
+            font-family: 'Courier New', monospace;
+        }
+
+        .centered-container {
+            max-width: 620px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        div.stForm {
+            background-color: #2e2e2e;
+            border: 2px dashed #888;
+            border-radius: 0;
+            padding: 24px;
+        }
+
+        div.stForm input, div.stForm .stTextInput>div>input {
+            background-color: #000 !important;
+            color: #fff !important;
+            border: 2px solid #fff;
+        }
+
+        div.stForm .stCheckbox>label {
+            color: #ccc !important;
+            font-weight: bold;
+        }
+
+        div.stForm button[kind="primary"] {
+            background-color: #000 !important;
+            color: #fff !important;
+            border: 2px solid #fff !important;
+            font-weight: bold !important;
+            text-transform: uppercase;
+        }
+
+        .movie-card {
+            border: 2px dashed #888;
+            border-radius: 0px;
+            padding: 20px;
+            margin: 30px auto;
+            display: flex;
+            gap: 25px;
+            align-items: flex-start;
+            background: #2e2e2e;
+            font-family: 'Courier New', monospace;
+            width: 620px;
+            max-width: 100%;
+        }
+
+        .poster-container {
+            flex-shrink: 0;
+            border: 2px solid #aaa;
+        }
+
+        .movie-poster {
+            width: 200px;
+            height: auto;
+            display: block;
+        }
+
+        .movie-info h1, .movie-info h3, .movie-summary {
+            color: #f5f5f5;
+        }
+
+        [data-testid="stSidebar"] {
+            background-color: #2e2e2e;
+            border-right: 3px solid #888;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.title("🎬 CineCast AI")
+    # ─── Generate Podcast Card ───
+    with st.container():
+        st.markdown('<div class="centered-container">', unsafe_allow_html=True)
+        with st.form(key="search_form"):
+            st.markdown("## Generate Your Movie Podcast", unsafe_allow_html=True)
 
-    st.subheader("Select Podcast Length")
-
-    ordered_labels = [PODCAST_LENGTH_OPTIONS[key]["ui_label"]
-                      for key in LENGTH_PREFERENCE_ORDER]
-    ordered_keys = LENGTH_PREFERENCE_ORDER
-
-    default_index = ordered_keys.index(DEFAULT_LENGTH_PREFERENCE)
-
-    found_flag = False
-
-    found_flag = False
-
-    current_length_key = st.session_state.get(
-        "length_preference", DEFAULT_LENGTH_PREFERENCE)
-    try:
-        current_index = ordered_keys.index(current_length_key)
-    except ValueError:
-        current_index = default_index
-
-    selected_label = st.selectbox(
-        "Choose the desired duration:",
-        options=ordered_labels,
-        index=current_index,
-        help="Select the approximate length for your generated podcast summary.",
-        key="length_label_select"
-    )
-
-    selected_length_key = next(key for key, val in PODCAST_LENGTH_OPTIONS.items(
-    ) if val["ui_label"] == selected_label)
-    st.session_state.length_preference = selected_length_key
-
-    st.session_state.allow_spoilers = st.toggle(
-        "Include Spoilers",
-        value=st.session_state.get("allow_spoilers", False),
-        help="Toggle ON to include plot details and spoilers. Toggle OFF for a spoiler-free experience.",
-        key="spoiler_toggle",
-        on_change=lambda: st.session_state.update(
-            allow_spoilers=st.session_state.spoiler_toggle)
-    )
-
-    if st.session_state.allow_spoilers:
-        st.caption(
-            "🚨 Spoiler mode: The review may reveal major plot points and twists")
-    else:
-        st.caption("✅ Spoiler-free mode: No major plot reveals")
-
-    # Search container with input and button
-    with st.form(key="search_form"):
-        cols = st.columns([7, 1])
-        with cols[0]:
+            # Movie title
             movie_title = st.text_input(
-                "Enter movie title:",
-                key="movie_title_input",
-                label_visibility="collapsed",
-                placeholder="Search for a movie..."
+                label="Movie Title",
+                placeholder="e.g. Silence of the Lambs",
+                key="movie_title_input"
             )
-        with cols[1]:
-            searchMovie = st.form_submit_button("Search")
 
-    # Handle form submission
-    if searchMovie and movie_title:
-        # Call your function here - mock data for demonstration
-        found_flag, movie_details = find_similar_movie_imdb(movie_title)
-        if found_flag:
-            movie_title = movie_details['title'] + \
-                " (" + str(movie_details['release_date']) + ")"
-            director = movie_details.get('director') if movie_details.get(
-                'director') else "Unknown"
-            description = movie_details.get('description')
+            # Spoiler-free toggle (unique key)
+            spoiler_free = st.checkbox(
+                label="Spoiler-Free Mode",
+                value=st.session_state.get("allow_spoilers", False),
+                key="spoiler_toggle_form",
+                help="Enable this to avoid plot spoilers"
+            )
 
-            # Display movie information using a single HTML block
-            st.markdown(f"""
-                <div class="movie-card">
-                    <div class="poster-container">
-                        <img src="{movie_details['poster']}" class="movie-poster">
-                    </div>
-                    <div class="movie-info">
-                        <h1>{movie_title}</h1>
-                        <h3>Directed by: {director}</h3>
-                        <p class="movie-summary">Summary: {description}</p>
-                    </div>
-                </div>
+            # Length selector (unique key)
+            length_label = st.selectbox(
+                label="Episode Length",
+                options=[PODCAST_LENGTH_OPTIONS[k]["ui_label"] for k in LENGTH_PREFERENCE_ORDER],
+                index=LENGTH_PREFERENCE_ORDER.index(
+                    st.session_state.get("length_preference", DEFAULT_LENGTH_PREFERENCE)
+                ),
+                key="length_label_form"
+            )
+
+            # Submit button
+            generate_btn = st.form_submit_button(
+                label="Generate Podcast",
+                use_container_width=True
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ─── Handle form submission ───
+        if generate_btn:
+            # persist into session_state for your main() logic
+            st.session_state.allow_spoilers = spoiler_free
+            chosen_key = next(
+                k for k, v in PODCAST_LENGTH_OPTIONS.items()
+                if v["ui_label"] == length_label
+            )
+            st.session_state.length_preference = chosen_key
+
+            if not movie_title:
+                st.warning("Please enter a movie title first!")
+            else:
+                with st.spinner(
+                    f"Searching for reviews and generating "
+                    f"{'spoiler-free ' if spoiler_free else ''}"
+                    f"podcast for '{movie_title}', may take up to 3 minutes..."
+                ):
+                    video_transcripts, review, podcast_bytes = generate_podcast(
+                        movie_title,
+                        allow_spoilers=spoiler_free,
+                        length_preference=chosen_key
+                    )
                 
-                <style>
-                    .movie-card {{
-                        border: 1px solid #e0e0e0;
-                        border-radius: 15px;
-                        padding: 20px;
-                        margin: 20px 0;
-                        display: flex;
-                        gap: 25px;
-                        align-items: flex-start;
-                        background: #03002E;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                    }}
-                    
-                    .poster-container {{
-                        flex-shrink: 0;
-                        border-radius: 8px;
-                        overflow: hidden;
-                        border: 1px solid #f0f0f0;
-                    }}
-                    
-                    .movie-poster {{
-                        width: 200px;
-                        height: auto;
-                        display: block;
-                    }}
-                    
-                    .movie-info h1 {{
-                        margin: 0 0 8px 0;
-                        color: #fff;
-                        font-size: 28px;
-                    }}
-                    
-                    .movie-info h3 {{
-                        margin: 0 0 12px 0;
-                        color: #fff;
-                        font-size: 18px;
-                    }}
-                    
-                    .movie-summary {{
-                        margin: 4px 0;
-                        color: #fff;
-                        font-size: 16px;
-                    }}
-                </style>
-            """, unsafe_allow_html=True)
-        else:
-            st.error("Movie not found. Please try another title.")
+                # Retrieve movie metadata
+                found_flag, movie_details = find_similar_movie_imdb(movie_title)
 
-    if found_flag:
-        if not movie_title:
-            st.warning("Please enter a movie title first!")
-        else:
-            with st.spinner(f"Searching for reviews and generating {'' if st.session_state.allow_spoilers else 'spoiler-free '}podcast for '{movie_title}', may take up to 3 minutes..."):
-                video_transcripts, review, podcast_bytes = generate_podcast(
-                    movie_title,
-                    allow_spoilers=st.session_state.allow_spoilers,
-                    length_preference=st.session_state.length_preference
+                if found_flag:
+                    formatted_title = f"{movie_details['title']} ({movie_details['release_date']})"
+                    director = movie_details.get('director', "Unknown")
+                    description = movie_details.get('description', "No description available.")
+
+                    # Display movie info card
+                    st.markdown(f"""
+                        <div class="movie-card">
+                            <div class="poster-container">
+                                <img src="{movie_details['poster']}" class="movie-poster">
+                            </div>
+                            <div class="movie-info">
+                                <h1>{formatted_title}</h1>
+                                <h3>Directed by: {director}</h3>
+                                <p class="movie-summary">Summary: {description}</p>
+                            </div>
+                        </div>
+
+                        <style>
+                            .movie-card {{
+                                border: 1px solid #2e2e2e;
+                                border-radius: 15px;
+                                padding: 20px;
+                                margin: 30px auto;
+                                display: flex;
+                                gap: 25px;
+                                align-items: flex-start;
+                                background: #2e2e2e;;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                width: 620px;
+                                max-width: 100%;
+                            }}
+
+                            .poster-container {{
+                                flex-shrink: 0;
+                                border-radius: 8px;
+                                overflow: hidden;
+                                border: 1px solid #444;
+                            }}
+
+                            .movie-poster {{
+                                width: 200px;
+                                height: auto;
+                                display: block;
+                            }}
+
+                            .movie-info h1 {{
+                                margin: 0 0 8px 0;
+                                color: #fff;
+                                font-size: 28px;
+                            }}
+
+                            .movie-info h3 {{
+                                margin: 0 0 12px 0;
+                                color: #fff;
+                                font-size: 18px;
+                            }}
+
+                            .movie-summary {{
+                                margin: 4px 0;
+                                color: #d1d5db;
+                                font-size: 16px;
+                            }}
+                        </style>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info("Movie poster and summary unavailable.")
+
+                st.subheader(f"Podcast for '{movie_title}' generated!")
+                st.audio(podcast_bytes, format="audio/mp3")
+
+                if "recent_episodes" not in st.session_state:
+                    st.session_state.recent_episodes = []
+                # Save recent episode
+                new_episode = {
+                    "title": movie_title,
+                    "length": PODCAST_LENGTH_OPTIONS[chosen_key]["ui_label"],
+                    "has_spoilers": not spoiler_free,   # <-- Fix here
+                    "timestamp": time.strftime("%B %d, %Y")
+                }
+                st.session_state.recent_episodes.insert(0, new_episode)
+                st.session_state.recent_episodes = st.session_state.recent_episodes[:3]
+
+                # Download button
+                spoiler_tag = "with_spoilers" if spoiler_free else "spoiler_free"
+                fname = f"{movie_title.replace(' ', '_')}_{spoiler_tag}_{chosen_key}.mp3"
+                st.download_button(
+                    label="Download Podcast",
+                    data=podcast_bytes,
+                    file_name=fname,
+                    mime="audio/mp3",
                 )
 
-            st.subheader(f"Podcast for '{movie_title}' generated!")
-            st.audio(podcast_bytes, format="audio/mp3")
+                # Transcript expander
+                with st.expander("Podcast Transcript"):
+                    st.write(review)
 
-            spoiler_info = "with_spoilers" if st.session_state.allow_spoilers else "spoiler_free"
-            length_tag = st.session_state.length_preference.lower()
-            download_filename = f"{movie_title.replace(' ', '_')}_{spoiler_info}_{length_tag}_podcast.mp3"
-            st.download_button(
-                label="Download Podcast",
-                data=podcast_bytes,
-                file_name=download_filename,
-                mime="audio/mp3",
-            )
+                # Source Videos expander
+                with st.expander("Source Videos"):
+                    video_review_data = []
+                    for info in video_transcripts:
+                        tag = ("🚨 Contains Spoilers" 
+                            if info.get("likely_has_spoilers", False) 
+                            else "✅ Spoiler-Free")
+                        link = f"[{info['title']} by {info['creator']}]({info['url']}) - {tag}"
+                        video_review_data.append({"Reviews": link})
+                    df = pd.DataFrame(video_review_data)
+                    st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
 
-            with st.expander("Podcast Transcript"):
-                st.write(review)
+        # ─── Recent Episodes Section ───
+        if "recent_episodes" in st.session_state and st.session_state.recent_episodes:
+            st.markdown("## 🎧 Recent Episodes")
 
-            with st.expander("Source Videos"):
-                video_review_data = []
-                for video_info in video_transcripts:
-                    spoiler_tag = "🚨 Contains Spoilers" if video_info.get(
-                        'likely_has_spoilers', False) else "✅ Spoiler-Free"
-                    title = video_info['title']
-                    creator = video_info['creator']
-                    url = video_info['url']
-                    markdown_link = f"[{title} by {creator}]({url}) - {spoiler_tag}"
-                    video_review_data.append({"Reviews": markdown_link})
-
-                df = pd.DataFrame(video_review_data)
-                st.markdown(df.to_markdown(index=False),
-                            unsafe_allow_html=True)
+            for episode in reversed(st.session_state.recent_episodes):
+                title_display = f"🎬 {episode['title']}"
+                meta_info = (
+                    f"Length: {episode['length']}  |  "
+                    f"{'✅ Spoiler-Free' if not episode.get('has_spoilers', False) else '🚨 Includes Spoilers'}  |  "
+                    f"Generated on {episode['timestamp']}"
+                )
+                st.markdown(
+                    f"""
+                    <div style="background-color: #2e2e2e; padding: 15px 20px; border-radius: 12px; margin-bottom: 15px;">
+                        <p style="color: #F9FAFB; margin: 0 0 6px 0;">{title_display}</p>
+                        <p style="color: #D1D5DB; margin: 0;">{meta_info}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
     st.markdown("---")
     st.caption(
-        "Created by: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee")
+        "Created by: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee"
+    )

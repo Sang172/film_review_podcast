@@ -6,9 +6,10 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-
-async def get_single_trasncript(video, movie, proxy=proxy, allow_spoilers=False):
-    proxies = {'http': proxy, 'https': proxy} if proxy else None
+# remove proxy=proxy for local
+async def get_single_trasncript(video, movie, allow_spoilers=False):
+    # proxies = {'http': proxy, 'https': proxy} if proxy else None
+    proxies = None  # Don't use proxy locally
     video_id = video['id']
     video_title = video['title'].replace('|',',')
     video_creator = video['channel'].replace('|',',')
@@ -37,8 +38,8 @@ async def get_single_trasncript(video, movie, proxy=proxy, allow_spoilers=False)
 
 
         try:
-            transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'], proxies=proxies)
-            # transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'])
+            # transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'], proxies=proxies)
+            transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'])
 
             full_transcript = " ".join([item['text'] for item in transcript_list])
 
@@ -57,21 +58,21 @@ async def get_single_trasncript(video, movie, proxy=proxy, allow_spoilers=False)
             return None
 
 
-async def _get_video_transcripts(videos, movie, proxy=proxy, allow_spoilers=False):
+async def _get_video_transcripts(videos, movie, allow_spoilers=False):
     
     logger.info(f"Starting transcript retrieval with allow_spoilers={allow_spoilers}")
 
     tasks = []
 
     for video in videos:
-        segment = asyncio.create_task(get_single_trasncript(video, movie, proxy=proxy, allow_spoilers=allow_spoilers))
+        segment = asyncio.create_task(get_single_trasncript(video, movie, allow_spoilers=allow_spoilers))
         tasks.append(segment)
 
     video_transcripts = await asyncio.gather(*tasks)
 
     return video_transcripts
 
-def get_video_transcripts(videos, movie, proxy=proxy, allow_spoilers=False):
-    result = asyncio.run(_get_video_transcripts(videos, movie, proxy=proxy, allow_spoilers=allow_spoilers))
+def get_video_transcripts(videos, movie, allow_spoilers=False):
+    result = asyncio.run(_get_video_transcripts(videos, movie, allow_spoilers=allow_spoilers))
     result = [x for x in result if x is not None]
     return result
