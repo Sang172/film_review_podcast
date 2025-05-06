@@ -287,10 +287,12 @@ if __name__ == "__main__":
             # Spoiler-free toggle (unique key)
             spoiler_free = st.checkbox(
                 label="Spoiler-Free Mode",
-                value=st.session_state.get("allow_spoilers", False),
+                value= not st.session_state.get("allow_spoilers", False),
                 key="spoiler_toggle_form",
                 help="Enable this to avoid plot spoilers"
             )
+
+            allow_spoilers = not spoiler_free
 
             # Length selector (unique key)
             length_label = st.selectbox(
@@ -313,7 +315,7 @@ if __name__ == "__main__":
         # ─── Handle form submission ───
         if generate_btn:
             # persist into session_state for your main() logic
-            st.session_state.allow_spoilers = spoiler_free
+            st.session_state.allow_spoilers = allow_spoilers
             chosen_key = next(
                 k for k, v in PODCAST_LENGTH_OPTIONS.items()
                 if v["ui_label"] == length_label
@@ -398,12 +400,12 @@ if __name__ == "__main__":
 
                 with st.spinner(
                     f"Searching for reviews and generating "
-                    f"{'spoiler-free ' if spoiler_free else ''}"
+                    f"{'spoiler-free ' if not allow_spoilers else ''}"
                     f"podcast for '{movie_title}', may take up to 3 minutes..."
                 ):
                     video_transcripts, review, podcast_bytes = generate_podcast(
                         movie_title,
-                        allow_spoilers=spoiler_free,
+                        allow_spoilers=allow_spoilers,
                         length_preference=chosen_key
                     )
 
@@ -416,14 +418,14 @@ if __name__ == "__main__":
                 new_episode = {
                     "title": movie_title,
                     "length": PODCAST_LENGTH_OPTIONS[chosen_key]["ui_label"],
-                    "has_spoilers": not spoiler_free,   # <-- Fix here
+                    "has_spoilers": allow_spoilers,
                     "timestamp": time.strftime("%B %d, %Y")
                 }
                 st.session_state.recent_episodes.insert(0, new_episode)
                 st.session_state.recent_episodes = st.session_state.recent_episodes[:3]
 
                 # Download button
-                spoiler_tag = "with_spoilers" if spoiler_free else "spoiler_free"
+                spoiler_tag = "with_spoilers" if allow_spoilers else "spoiler_free"
                 fname = f"{movie_title.replace(' ', '_')}_{spoiler_tag}_{chosen_key}.mp3"
                 st.download_button(
                     label="Download Podcast",
