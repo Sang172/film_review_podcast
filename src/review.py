@@ -64,7 +64,7 @@ def review_summary_parallel_with_retry(chunks, movie, allow_spoilers=False):
 
 def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruction: str = "between 1500 and 2000 words"):
     """
-    Instead of returning a single‐voice essay, this will ask Gemini to produce
+    Instead of returning a single-voice essay, this will ask Gemini to produce
     a two-person dialogue between Jane and John, alternating turns and covering
     the key points extracted from the individual review summaries.
     """
@@ -84,23 +84,23 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
 
     # 4) Build the dialogue‐style prompt
     dialogue_prompt = f"""
-    You’re writing a warm, engaging podcast script for CineCast AI, hosted by two friends, Jane and John. 
+    You're writing a warm, engaging podcast script for CineCast AI, hosted by two friends, Jane and John. 
     They know each other well and speak like real people catching up over coffee—friendly, informal, and curious—but still informative and focused on the movie.
 
     **Tone & Style**  
-    • Use contractions (“I’m”, “we’re”, “you’ll”) and occasional informal interjections (“mm-hmm”, “right?”, “you know?”).  
+    • Use contractions (“I'm”, “we're”, “you'll”) and occasional informal interjections (“mm-hmm”, “right?”, “you know?”).  
     • Have them ask each other quick follow-up questions (“John, what did you think of that?”, “Jane, did you catch that detail?”).  
     • Sprinkle in brief affirmations or reactions (“Absolutely!”, “Good point!”, “I was thinking the same”).  
     • Vary sentence length: mix short “checks” (“Sounds great.”) with slightly longer thoughts.  
 
     **Structure**  
     1. **Opening** (two lines):  
-    - Jane greets the audience (“Hey everyone, welcome back to CineCast AI! I’m Jane.”)  
-    - John responds (“And I’m John—excited to chat about {movie} today!”)  
-    2. **Body**: alternate turns covering each of these **Key Points**, but don’t read them verbatim—**weave** them into the conversation naturally. After Jane’s first point, have her **ask** John a question about it.  
+    - Jane greets the audience (“Hey everyone, welcome back to CineCast AI! I'm Jane.”)  
+    - John responds (“And I'm John—excited to chat about {movie} today!”)  
+    2. **Body**: alternate turns covering each of these **Key Points**, but don't read them verbatim—**weave** them into the conversation naturally. After Jane's first point, have her **ask** John a question about it.  
     3. **Closing** (two lines):  
     - John offers a final takeaway (“So, overall, {movie} is worth a watch because…”).  
-    - Jane wraps up (“That’s our take—thanks for listening, and see you next time!”).
+    - Jane wraps up (“That's our take—thanks for listening, and see you next time!”).
 
     **Key Points to Cover**  
     {points}
@@ -118,4 +118,4 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
 
     # 5) Call Gemini and return the script
     review_dialogue = asyncio.run(get_gemini_response(dialogue_prompt))
-    return review_dialogue.strip()
+    return review_dialogue.strip().replace('*','')
