@@ -91,7 +91,13 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
     • Use contractions (“I'm”, “we're”, “you'll”) and occasional informal interjections (“mm-hmm”, “right?”, “you know?”).  
     • Have them ask each other quick follow-up questions (“John, what did you think of that?”, “Jane, did you catch that detail?”).  
     • Sprinkle in brief affirmations or reactions (“Absolutely!”, “Good point!”, “I was thinking the same”).  
-    • Vary sentence length: mix short “checks” (“Sounds great.”) with slightly longer thoughts.  
+    • Vary sentence length: mix short “checks” (“Sounds great.”) with slightly longer thoughts.
+
+    **IMPORTANT**
+    • DO NOT have Jane and John reference individual reviewers or reviews in their conversation.
+    • Instead, they should DIRECTLY discuss the movie's qualities, as if these are their own opinions.
+    • NEVER use phrases like "critics said," "this reviewer mentioned," or "according to reviews."
+    • Present ALL insights as Jane and John's PERSONAL thoughts and observations about the film.
 
     **Structure**  
     1. **Opening** (two lines):  
