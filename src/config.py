@@ -21,7 +21,7 @@ proxy = os.environ.get('PROXY_ADDRESS') #uncomment after commented for local
 #proxy = None
 
 llm = genai.GenerativeModel("gemini-2.0-flash")
-GCS_BUCKET_NAME = "cinecast-andrea-bucket"
+GCS_BUCKET_NAME = 'msds603_film_podcast'
 
 
 # Podcast Length Configuration
