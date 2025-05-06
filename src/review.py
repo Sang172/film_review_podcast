@@ -65,7 +65,7 @@ def review_summary_parallel_with_retry(chunks, movie, allow_spoilers=False):
 def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruction: str = "between 1500 and 2000 words"):
     """
     Instead of returning a single-voice essay, this will ask Gemini to produce
-    a two-person dialogue between Jane and John, alternating turns and covering
+    a two-person dialogue between Jane and Clara, alternating turns and covering
     the key points extracted from the individual review summaries.
     """
     # 1) Filter and collect the raw summaries
@@ -84,29 +84,29 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
 
     # 4) Build the dialogue‐style prompt
     dialogue_prompt = f"""
-    You're writing a warm, engaging podcast script for CineCast AI, hosted by two friends, Jane and John. 
+    You're writing a warm, engaging podcast script for CineCast AI, hosted by two friends, Jane and Clara. 
     They know each other well and speak like real people catching up over coffee—friendly, informal, and curious—but still informative and focused on the movie.
     {spoiler_instruction}
     
     **Tone & Style**  
     • Use contractions (“I'm”, “we're”, “you'll”) and occasional informal interjections (“mm-hmm”, “right?”, “you know?”).  
-    • Have them ask each other quick follow-up questions (“John, what did you think of that?”, “Jane, did you catch that detail?”).  
+    • Have them ask each other quick follow-up questions (“Clara, what did you think of that?”, “Jane, did you catch that detail?”).  
     • Sprinkle in brief affirmations or reactions (“Absolutely!”, “Good point!”, “I was thinking the same”).  
     • Vary sentence length: mix short “checks” (“Sounds great.”) with slightly longer thoughts.
 
     **IMPORTANT**
-    • DO NOT have Jane and John reference individual reviewers or reviews in their conversation.
+    • DO NOT have Jane and Clara reference individual reviewers or reviews in their conversation.
     • Instead, they should DIRECTLY discuss the movie's qualities, as if these are their own opinions.
     • NEVER use phrases like "critics said," "this reviewer mentioned," or "according to reviews."
-    • Present ALL insights as Jane and John's PERSONAL thoughts and observations about the film.
+    • Present ALL insights as Jane and Clara's PERSONAL thoughts and observations about the film.
 
     **Structure**  
     1. **Opening** (two lines):  
     - Jane greets the audience (“Hey everyone, welcome back to CineCast AI! I'm Jane.”)  
-    - John responds (“And I'm John—excited to chat about {re.sub(r' \(\d{4}\)$', '', movie)} today!”)  
+    - Clara responds (“And I'm Clara—excited to chat about {re.sub(r' \(\d{4}\)$', '', movie)} today!”)  
     2. **Body**: alternate turns covering each of these **Key Points**, but don't read them verbatim—**weave** them into the conversation naturally. After Jane's first point, have her **ask** John a question about it.  
     3. **Closing** (two lines):  
-    - John offers a final takeaway (“So, overall, {re.sub(r' \(\d{4}\)$', '', movie)} is worth a watch because…”).  
+    - Clara offers a final takeaway (“So, overall, {re.sub(r' \(\d{4}\)$', '', movie)} is worth a watch because…”).  
     - Jane wraps up (“That's our take—thanks for listening, and see you next time!”).
 
     **Key Points to Cover**  
@@ -118,9 +118,9 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
     Format like this, but let your copy *feel* like a chat, not a bullet list:
 
     Jane:  
-    John:  
+    Clara:  
     Jane:  
-    John:  
+    Clara:  
     …
     """
 
