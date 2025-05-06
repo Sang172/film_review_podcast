@@ -60,7 +60,7 @@ async def _create_podcast(dialogue_script: str) -> bytes:
     """
 
     jane_voice = "en-US-Chirp3-HD-Leda"
-    clara_voice = "en-US-Chirp3-HD-Zephyr"
+    clara_voice = "en-US-Chirp3-HD-Aoede"
 
     # split out non-empty lines
     lines = [ln.strip() for ln in dialogue_script.splitlines() if ln.strip()]
