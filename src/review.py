@@ -63,29 +63,59 @@ def review_summary_parallel_with_retry(chunks, movie, allow_spoilers=False):
 
 
 def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruction: str = "between 1500 and 2000 words"):
-    valid_chunks = [chunk for chunk in chunks if chunk and isinstance(chunk, str)]
+    """
+    Instead of returning a single‐voice essay, this will ask Gemini to produce
+    a two-person dialogue between Jane and John, alternating turns and covering
+    the key points extracted from the individual review summaries.
+    """
+    # 1) Filter and collect the raw summaries
+    valid_chunks = [c for c in chunks if isinstance(c, str) and c.strip()]
     if not valid_chunks:
         logger.warning(f"No valid review summaries provided for final synthesis of '{movie}'.")
         return f"Could not generate a final summary for {movie} as no valid source review summaries were available."
 
-    combined_reviews = '\n\n----------------------\n\n'.join(valid_chunks)
+    # 2) Turn each summary into a bullet point for clarity
+    points = "\n".join(f"- {summary.strip()}" for summary in valid_chunks)
+
+    # 3) Optional spoiler instruction
     spoiler_instruction = ""
     if not allow_spoilers:
-        spoiler_instruction = "IMPORTANT: Do not include any plot spoilers or key story revelations in your summary."
+        spoiler_instruction = "IMPORTANT: Do not include any plot spoilers or key story revelations in your discussion."
 
-    length_req = f"The summary review should be {length_prompt_instruction} in length."
+    # 4) Build the dialogue‐style prompt
+    dialogue_prompt = f"""
+    You’re writing a warm, engaging podcast script for CineCast AI, hosted by two friends, Jane and John. 
+    They know each other well and speak like real people catching up over coffee—friendly, informal, and curious—but still informative and focused on the movie.
 
-    prompt = f"""
-                You are an intelligent film critic. Your task is to write a film review.
-                I will give you multiple different reviews about the film "{movie}".
-                Combine the information in the reviews to produce a single summary review that offers the most comprehensive overview.
-                If there is any review that is related to movies other than "{movie}", ignore that review.
-                {length_req}
-                It should be written in essay format with no title where each paragraph is separated with newline separators. Do NOT include any bullet points.
-                Dive into the summary review right away and do NOT include any introductory remarks such as "After going through the reviews".
-                {spoiler_instruction}
-                I will provide the source reviews here:
-                {combined_reviews}
-                """
-    review = asyncio.run(get_gemini_response(prompt))
-    return review
+    **Tone & Style**  
+    • Use contractions (“I’m”, “we’re”, “you’ll”) and occasional informal interjections (“mm-hmm”, “right?”, “you know?”).  
+    • Have them ask each other quick follow-up questions (“John, what did you think of that?”, “Jane, did you catch that detail?”).  
+    • Sprinkle in brief affirmations or reactions (“Absolutely!”, “Good point!”, “I was thinking the same”).  
+    • Vary sentence length: mix short “checks” (“Sounds great.”) with slightly longer thoughts.  
+
+    **Structure**  
+    1. **Opening** (two lines):  
+    - Jane greets the audience (“Hey everyone, welcome back to CineCast AI! I’m Jane.”)  
+    - John responds (“And I’m John—excited to chat about {movie} today!”)  
+    2. **Body**: alternate turns covering each of these **Key Points**, but don’t read them verbatim—**weave** them into the conversation naturally. After Jane’s first point, have her **ask** John a question about it.  
+    3. **Closing** (two lines):  
+    - John offers a final takeaway (“So, overall, {movie} is worth a watch because…”).  
+    - Jane wraps up (“That’s our take—thanks for listening, and see you next time!”).
+
+    **Key Points to Cover**  
+    {points}
+
+    **Length guideline:** {length_prompt_instruction}  
+
+    Format like this, but let your copy *feel* like a chat, not a bullet list:
+
+    Jane:  
+    John:  
+    Jane:  
+    John:  
+    …
+    """
+
+    # 5) Call Gemini and return the script
+    review_dialogue = asyncio.run(get_gemini_response(dialogue_prompt))
+    return review_dialogue.strip()

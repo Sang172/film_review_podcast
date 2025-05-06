@@ -1,72 +1,118 @@
+import os
 import io
 import logging
-from google.cloud import texttospeech_v1beta1 as texttospeech
-from pydub import AudioSegment
+import random
 import asyncio
+
+from pydub import AudioSegment
+from google.cloud import texttospeech_v1beta1 as tts
 
 logger = logging.getLogger(__name__)
 
-def _get_audio_chunk(text, language_code="en-US", voice_name="en-US-Chirp3-HD-Leda"):
-    client = texttospeech.TextToSpeechClient()
-    input_text = texttospeech.SynthesisInput(text=text)
-    voice = texttospeech.VoiceSelectionParams(language_code=language_code, name=voice_name)
+def _synthesize_chunk(text: str, voice_name: str) -> bytes:
+    """
+    Synthesize a single line of dialogue as raw PCM (LINEAR16),
+    with a small random prosody variation for natural pacing.
+    """
+    client = tts.TextToSpeechClient()
 
-    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
+    # SSML: only vary rate, no pitch or unsupported tags
+    ssml = f"""
+    <speak>
+      <voice name="{voice_name}">
+        <prosody rate="{random.choice(['0.95','1.0','1.05'])}">
+          {text}
+        </prosody>
+      </voice>
+    </speak>
+    """
+    synthesis_input = tts.SynthesisInput(ssml=ssml)
+    voice_params = tts.VoiceSelectionParams(
+        language_code="en-US",
+        name=voice_name
+    )
+    audio_config = tts.AudioConfig(
+        audio_encoding=tts.AudioEncoding.LINEAR16,
+        sample_rate_hertz=48000,
+        effects_profile_id=["large-home-entertainment-class-device"]
+    )
 
-    logger.info(f"Processing chunk '{text[:30]}'")
-    response = client.synthesize_speech(request={"input": input_text, "voice": voice, "audio_config": audio_config})
-
+    logger.info(f"Synthesizing chunk (first 30 chars): {text[:30]!r}")
+    response = client.synthesize_speech(
+        request={
+            "input": synthesis_input,
+            "voice": voice_params,
+            "audio_config": audio_config
+        }
+    )
     return response.audio_content
 
-
-async def get_audio_chunk(text):
-    response = await asyncio.to_thread(_get_audio_chunk, text)
-    return response
-
-
-async def get_audio_chunk_with_retry(text, initial_delay=5, max_retries=20):
-    retries = 0
-    delay = initial_delay
-    while retries <= max_retries:
+async def _synthesize_with_retry(text: str, voice_name: str,
+                                 max_retries: int = 3,
+                                 delay: float = 1.0) -> bytes | None:
+    """
+    Retry transient failures up to max_retries.
+    """
+    for attempt in range(max_retries):
         try:
-            return await get_audio_chunk(text)
+            return await asyncio.to_thread(_synthesize_chunk, text, voice_name)
         except Exception as e:
-            logger.info(f"Error processing chunk '{text[:30]}' (Retry {retries + 1}/{max_retries}): {e}")
-            if retries < max_retries:
-                logger.info(f"Waiting {delay} seconds before retrying...")
-                await asyncio.sleep(delay)
-                delay *= 1
-                retries += 1
-            else:
-                logger.error(f"Max retries reached for chunk '{text[:30]}'. Skipping. Error: {e}")
-                return None
+            logger.warning(f"TTS attempt {attempt+1}/{max_retries} failed: {e}")
+            await asyncio.sleep(delay)
+            delay *= 2
+    logger.error(f"Failed to synthesize chunk after {max_retries} retries: {text[:30]!r}")
+    return None
 
+async def _create_podcast(dialogue_script: str) -> bytes:
+    """
+    Turn the full “Jane:/John:” transcript into a single MP3:
+    1) Synthesize each line to raw PCM,
+    2) Convert to AudioSegment,
+    3) Stitch with short pauses,
+    4) Export once at high MP3 bitrate.
+    """
+    # load voice names from env
+    jane_voice = os.getenv("JANE_VOICE_NAME", "en-US-Studio-O")
+    john_voice = os.getenv("JOHN_VOICE_NAME", "en-US-Studio-Q")
 
-async def _create_podcast(review):
-    review_split = [x for x in review.split('\n') if len(x)>2]
+    # split out non-empty lines
+    lines = [ln.strip() for ln in dialogue_script.splitlines() if ln.strip()]
     tasks = []
-    one_second_silence = AudioSegment.silent(duration=1000)
+    for ln in lines:
+        if ln.startswith("Jane:"):
+            text = ln.split(":", 1)[1].strip()
+            voice = jane_voice
+        elif ln.startswith("John:"):
+            text = ln.split(":", 1)[1].strip()
+            voice = john_voice
+        else:
+            continue
+        tasks.append(asyncio.create_task(_synthesize_with_retry(text, voice)))
 
-    for chunk in review_split:
-        segment = asyncio.create_task(get_audio_chunk_with_retry(chunk))
-        tasks.append(segment)
+    # run all TTS jobs
+    blobs = await asyncio.gather(*tasks)
 
-    audio_segments = await asyncio.gather(*tasks)
+    # build the final AudioSegment
+    spacer = AudioSegment.silent(duration=300)
+    final = AudioSegment.empty()
+    for blob in blobs:
+        if blob:
+            # raw PCM LINEAR16 → AudioSegment
+            seg = AudioSegment.from_raw(
+                io.BytesIO(blob),
+                sample_width=2,        # 16-bit
+                frame_rate=48000,
+                channels=1
+            )
+            final += seg + spacer
 
-    combined_audio = AudioSegment.empty()
+    # export once to MP3 at 192 kbps
+    out = io.BytesIO()
+    final.export(out, format="mp3", bitrate="192k")
+    return out.getvalue()
 
-    for segment in audio_segments:
-        if segment is not None:
-            combined_audio += AudioSegment.from_mp3(io.BytesIO(segment))
-            combined_audio += one_second_silence
-
-    audio_buffer = io.BytesIO()
-    combined_audio.export(audio_buffer, format="mp3")
-    audio_buffer.seek(0)
-
-    return audio_buffer.read()
-
-
-def create_podcast(review):
-    result = asyncio.run(_create_podcast(review))
-    return result
+def create_podcast(dialogue_script: str) -> bytes:
+    """
+    Public entry: run the async pipeline and return MP3 bytes.
+    """
+    return asyncio.run(_create_podcast(dialogue_script))

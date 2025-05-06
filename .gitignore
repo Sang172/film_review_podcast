@@ -1,17 +1,15 @@
-*.json
-service-account.json
-*-key.json
-*credentials*.json
+# Environment and credentials
 .env
-.env.local
+*.json
+keys/
+
+# Python artifacts
 __pycache__/
-*.py[cod]
-*$py.class
-*.ipynb
-*.pickle
-*.keras
-*.mp4
-*.mp3
-*.csv
-.DS_Store
 venv/
+
+# Streamlit config
+.streamlit/
+
+# OS & editor cruft
+.DS_Store
+*.swp
