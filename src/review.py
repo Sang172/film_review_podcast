@@ -1,13 +1,13 @@
 import logging
 import asyncio
 from src.utils import get_gemini_response
+import re
 
 logger = logging.getLogger(__name__)
 
 
 async def get_review_summary(chunk, movie, allow_spoilers=False):
-    video = f"review '{chunk['title']}' by '{chunk['creator']}'\n\n{chunk['transcript']}"
-    logger.info('summarizing '+video.split('\n\n')[0])
+    logger.info(f"summarizing review '{chunk['title']}' by '{chunk['creator']}'")
     
     spoiler_instruction = ""
     if not allow_spoilers:
@@ -20,7 +20,7 @@ async def get_review_summary(chunk, movie, allow_spoilers=False):
     Otherwise, summarize the review into around 1000 words.
     {spoiler_instruction}
     I will provide the film review below:
-    {video}
+    {chunk['transcript']}
     """
     summary = await get_gemini_response(prompt)
     return summary
@@ -86,7 +86,8 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
     dialogue_prompt = f"""
     You're writing a warm, engaging podcast script for CineCast AI, hosted by two friends, Jane and John. 
     They know each other well and speak like real people catching up over coffee—friendly, informal, and curious—but still informative and focused on the movie.
-
+    {spoiler_instruction}
+    
     **Tone & Style**  
     • Use contractions (“I'm”, “we're”, “you'll”) and occasional informal interjections (“mm-hmm”, “right?”, “you know?”).  
     • Have them ask each other quick follow-up questions (“John, what did you think of that?”, “Jane, did you catch that detail?”).  
@@ -102,16 +103,17 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
     **Structure**  
     1. **Opening** (two lines):  
     - Jane greets the audience (“Hey everyone, welcome back to CineCast AI! I'm Jane.”)  
-    - John responds (“And I'm John—excited to chat about {movie} today!”)  
+    - John responds (“And I'm John—excited to chat about {re.sub(r' \(\d{4}\)$', '', movie)} today!”)  
     2. **Body**: alternate turns covering each of these **Key Points**, but don't read them verbatim—**weave** them into the conversation naturally. After Jane's first point, have her **ask** John a question about it.  
     3. **Closing** (two lines):  
-    - John offers a final takeaway (“So, overall, {movie} is worth a watch because…”).  
+    - John offers a final takeaway (“So, overall, {re.sub(r' \(\d{4}\)$', '', movie)} is worth a watch because…”).  
     - Jane wraps up (“That's our take—thanks for listening, and see you next time!”).
 
     **Key Points to Cover**  
     {points}
 
-    **Length guideline:** {length_prompt_instruction}  
+    **Length guideline**
+    {length_prompt_instruction}  
 
     Format like this, but let your copy *feel* like a chat, not a bullet list:
 
