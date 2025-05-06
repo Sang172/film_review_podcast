@@ -36,8 +36,8 @@ def _synthesize_chunk(text: str, voice_name: str) -> bytes:
     return response.audio_content
 
 async def _synthesize_with_retry(text: str, voice_name: str,
-                                 max_retries: int = 3,
-                                 delay: float = 1.0) -> bytes | None:
+                                 max_retries: int = 30,
+                                 delay: float = 5.0) -> bytes | None:
     """
     Retry transient failures up to max_retries.
     """
@@ -47,7 +47,6 @@ async def _synthesize_with_retry(text: str, voice_name: str,
         except Exception as e:
             logger.warning(f"TTS attempt {attempt+1}/{max_retries} failed: {e}")
             await asyncio.sleep(delay)
-            delay *= 2
     logger.error(f"Failed to synthesize chunk after {max_retries} retries: {text[:30]!r}")
     return None
 
