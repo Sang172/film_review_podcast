@@ -323,22 +323,13 @@ if __name__ == "__main__":
             if not movie_title:
                 st.warning("Please enter a movie title first!")
             else:
-                with st.spinner(
-                    f"Searching for reviews and generating "
-                    f"{'spoiler-free ' if spoiler_free else ''}"
-                    f"podcast for '{movie_title}', may take up to 3 minutes..."
-                ):
-                    video_transcripts, review, podcast_bytes = generate_podcast(
-                        movie_title,
-                        allow_spoilers=spoiler_free,
-                        length_preference=chosen_key
-                    )
+
                 
                 # Retrieve movie metadata
                 found_flag, movie_details = find_similar_movie_imdb(movie_title)
 
                 if found_flag:
-                    formatted_title = f"{movie_details['title']} ({movie_details['release_date']})"
+                    movie_title = f"{movie_details['title']} ({movie_details['release_date']})"
                     director = movie_details.get('director', "Unknown")
                     description = movie_details.get('description', "No description available.")
 
@@ -349,7 +340,7 @@ if __name__ == "__main__":
                                 <img src="{movie_details['poster']}" class="movie-poster">
                             </div>
                             <div class="movie-info">
-                                <h1>{formatted_title}</h1>
+                                <h1>{movie_title}</h1>
                                 <h3>Directed by: {director}</h3>
                                 <p class="movie-summary">Summary: {description}</p>
                             </div>
@@ -404,6 +395,17 @@ if __name__ == "__main__":
                     """, unsafe_allow_html=True)
                 else:
                     st.info("Movie poster and summary unavailable.")
+
+                with st.spinner(
+                    f"Searching for reviews and generating "
+                    f"{'spoiler-free ' if spoiler_free else ''}"
+                    f"podcast for '{movie_title}', may take up to 3 minutes..."
+                ):
+                    video_transcripts, review, podcast_bytes = generate_podcast(
+                        movie_title,
+                        allow_spoilers=spoiler_free,
+                        length_preference=chosen_key
+                    )
 
                 st.subheader(f"Podcast for '{movie_title}' generated!")
                 st.audio(podcast_bytes, format="audio/mp3")

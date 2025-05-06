@@ -16,25 +16,13 @@ def _synthesize_chunk(text: str, voice_name: str) -> bytes:
     """
     client = tts.TextToSpeechClient()
 
-    # SSML: only vary rate, no pitch or unsupported tags
-    ssml = f"""
-    <speak>
-      <voice name="{voice_name}">
-        <prosody rate="{random.choice(['0.95','1.0','1.05'])}">
-          {text}
-        </prosody>
-      </voice>
-    </speak>
-    """
-    synthesis_input = tts.SynthesisInput(ssml=ssml)
+    synthesis_input = tts.SynthesisInput(text=text)
     voice_params = tts.VoiceSelectionParams(
         language_code="en-US",
         name=voice_name
     )
     audio_config = tts.AudioConfig(
-        audio_encoding=tts.AudioEncoding.LINEAR16,
-        sample_rate_hertz=48000,
-        effects_profile_id=["large-home-entertainment-class-device"]
+        audio_encoding=tts.AudioEncoding.MP3
     )
 
     logger.info(f"Synthesizing chunk (first 30 chars): {text[:30]!r}")
@@ -48,8 +36,8 @@ def _synthesize_chunk(text: str, voice_name: str) -> bytes:
     return response.audio_content
 
 async def _synthesize_with_retry(text: str, voice_name: str,
-                                 max_retries: int = 3,
-                                 delay: float = 1.0) -> bytes | None:
+                                 max_retries: int = 30,
+                                 delay: float = 5.0) -> bytes | None:
     """
     Retry transient failures up to max_retries.
     """
@@ -59,7 +47,6 @@ async def _synthesize_with_retry(text: str, voice_name: str,
         except Exception as e:
             logger.warning(f"TTS attempt {attempt+1}/{max_retries} failed: {e}")
             await asyncio.sleep(delay)
-            delay *= 2
     logger.error(f"Failed to synthesize chunk after {max_retries} retries: {text[:30]!r}")
     return None
 
@@ -71,9 +58,9 @@ async def _create_podcast(dialogue_script: str) -> bytes:
     3) Stitch with short pauses,
     4) Export once at high MP3 bitrate.
     """
-    # load voice names from env
-    jane_voice = os.getenv("JANE_VOICE_NAME", "en-US-Studio-O")
-    john_voice = os.getenv("JOHN_VOICE_NAME", "en-US-Studio-Q")
+
+    jane_voice = "en-US-Chirp3-HD-Leda"
+    john_voice = "en-US-Chirp3-HD-Charon"
 
     # split out non-empty lines
     lines = [ln.strip() for ln in dialogue_script.splitlines() if ln.strip()]
@@ -93,23 +80,18 @@ async def _create_podcast(dialogue_script: str) -> bytes:
     blobs = await asyncio.gather(*tasks)
 
     # build the final AudioSegment
-    spacer = AudioSegment.silent(duration=300)
+    spacer = AudioSegment.silent(duration=600)
     final = AudioSegment.empty()
     for blob in blobs:
         if blob:
-            # raw PCM LINEAR16 → AudioSegment
-            seg = AudioSegment.from_raw(
-                io.BytesIO(blob),
-                sample_width=2,        # 16-bit
-                frame_rate=48000,
-                channels=1
-            )
+            seg = AudioSegment.from_mp3(io.BytesIO(blob))
             final += seg + spacer
 
     # export once to MP3 at 192 kbps
     out = io.BytesIO()
     final.export(out, format="mp3", bitrate="192k")
-    return out.getvalue()
+    out.seek(0)
+    return out.read()
 
 def create_podcast(dialogue_script: str) -> bytes:
     """
