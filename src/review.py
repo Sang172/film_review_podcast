@@ -134,6 +134,6 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
     review_dialogue = asyncio.run(get_gemini_response(dialogue_prompt))
     review_dialogue = review_dialogue.strip().replace('*','').split('\n')
     review_dialogue = [line for line in review_dialogue if "Jane:" in line or "Clara:" in line]
-    review_dialogue = '\n'.join(review_dialogue)
+    review_dialogue = '\n\n\n'.join(review_dialogue)
 
     return review_dialogue
