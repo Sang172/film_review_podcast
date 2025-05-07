@@ -122,8 +122,18 @@ def get_final_summary(chunks, movie, allow_spoilers=False, length_prompt_instruc
     Jane:  
     Clara:  
     …
+
+    **IMPORTANT**
+    • DO NOT have Jane and Clara reference individual reviewers or reviews in their conversation.
+    • Instead, they should DIRECTLY discuss the movie's qualities, as if these are their own opinions.
+    • NEVER use phrases like "critics said," "this reviewer mentioned," or "according to reviews."
+    • Present ALL insights as Jane and Clara's PERSONAL thoughts and observations about the film.
     """
 
     # 5) Call Gemini and return the script
     review_dialogue = asyncio.run(get_gemini_response(dialogue_prompt))
-    return review_dialogue.strip().replace('*','')
+    review_dialogue = review_dialogue.strip().replace('*','').split('\n')
+    review_dialogue = [line for line in review_dialogue if "Jane:" in line or "Clara:" in line]
+    review_dialogue = '\n'.join(review_dialogue)
+
+    return review_dialogue
