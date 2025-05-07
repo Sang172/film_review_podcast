@@ -20,7 +20,7 @@ async def get_single_trasncript(video, movie, allow_spoilers=False):
     Your answer should be only 'yes' or 'no'.
     If the video is a movie trailer, your response should be 'no'.
     If the video is from the press junket, your reponse should be 'no'.
-    If unsure, respond with a 'yes'.
+    If unsure, respond with a 'no'.
     The title is provided below:
     {video_title}
     """

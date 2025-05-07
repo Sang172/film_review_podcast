@@ -60,7 +60,7 @@ async def _create_podcast(dialogue_script: str) -> bytes:
     """
 
     jane_voice = "en-US-Chirp3-HD-Leda"
-    john_voice = "en-US-Chirp3-HD-Charon"
+    clara_voice = "en-US-Chirp3-HD-Aoede"
 
     # split out non-empty lines
     lines = [ln.strip() for ln in dialogue_script.splitlines() if ln.strip()]
@@ -69,9 +69,9 @@ async def _create_podcast(dialogue_script: str) -> bytes:
         if ln.startswith("Jane:"):
             text = ln.split(":", 1)[1].strip()
             voice = jane_voice
-        elif ln.startswith("John:"):
+        elif ln.startswith("Clara:"):
             text = ln.split(":", 1)[1].strip()
-            voice = john_voice
+            voice = clara_voice
         else:
             continue
         tasks.append(asyncio.create_task(_synthesize_with_retry(text, voice)))
