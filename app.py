@@ -1,256 +1,477 @@
+import streamlit as st
+import pandas as pd
+import pickle
+import time
+from google.cloud import storage
+from src.config import setup_logging, GCS_BUCKET_NAME
+from src.config import PODCAST_LENGTH_OPTIONS, LENGTH_PREFERENCE_ORDER, DEFAULT_LENGTH_PREFERENCE
+from src.search import get_video_transcripts
+from src.review import review_summary_parallel_with_retry, get_final_summary
+from src.utils import find_similar_movie_imdb
+from src.audio import create_podcast
 from youtube_search import YoutubeSearch
-from youtube_transcript_api import YouTubeTranscriptApi
 from dotenv import load_dotenv
 import os
-import google.generativeai as genai
-from google.cloud import texttospeech_v1beta1 as texttospeech
-# from google.oauth2.service_account import Credentials
-import concurrent.futures
-import time
-from pydub import AudioSegment
-import logging
-import streamlit as st
-from gtts import gTTS
-import pandas as pd
-import io
-
+#from google.oauth2.service_account import Credentials
+from datetime import datetime
 
 load_dotenv()
-# credentials_path=os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
-# credentials = Credentials.from_service_account_file(credentials_path)
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-proxy = os.environ.get('PROXY_ADDRESS')
+#credentials_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+#credentials = Credentials.from_service_account_file(credentials_path)
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s',
-                    datefmt='%Y-%m-%d %H:%M:%S')
-logger = logging.getLogger(__name__)
-
-llm = genai.GenerativeModel("gemini-2.0-flash")
+logger = setup_logging()
 
 
-def get_gemini_response(prompt):
-    return llm.generate_content(prompt).text.strip()
+def main(movie: str, allow_spoilers: bool = False, length_preference: str = DEFAULT_LENGTH_PREFERENCE):
+    start_time = time.time()
+    if allow_spoilers:
+        search_term = movie + ' movie spoiler review'
+    else:
+        search_term = movie + ' movie no spoiler review'
+    max_results = 20
 
+    gcs_bucket_name = GCS_BUCKET_NAME
+    directory_name = movie.lower().replace(' ', '_')
+    spoiler_suffix = "_spoiler" if allow_spoilers else "_no_spoiler"
 
-def get_video_transcripts(videos, movie, proxy=proxy):
+    try:
+        length_options = PODCAST_LENGTH_OPTIONS.get(
+            length_preference, PODCAST_LENGTH_OPTIONS[DEFAULT_LENGTH_PREFERENCE])
+        length_suffix = length_options["filename_suffix"]
+    except KeyError:
+        logger.error(
+            f"Invalid length_preference '{length_preference}' and fallback failed. Using empty suffix.")
+        length_suffix = ""
 
-    video_transcripts = []
-    proxies = {'http': proxy, 'https': proxy}
+    podcast_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}{length_suffix}_podcast.mp3"
+    review_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}{length_suffix}_review_text.pkl"
+    transcripts_gcs_path = f"{directory_name}/{directory_name}{spoiler_suffix}_source_videos.pkl"
 
-    for video in videos:
-        video_id = video['id']
-        video_title = video['title'].replace('|',',')
-        video_creator = video['channel'].replace('|',',')
-        video_url = 'https://youtube.com' + video['url_suffix']
+    #storage_client = storage.Client(credentials=credentials)
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(gcs_bucket_name)
 
-        review_or_not = f"""
-        I will give you the title of a YouTube video.
-        Your task is to determine whether or not it is a review video about the film '{movie}'.
-        Your answer should be only 'yes' or 'no'.
-        If the video is a movie trailer, your response should be 'no'.
-        If the video is from the press junket, your reponse should be 'no'.
-        If unsure, respond with a 'yes'.
-        The title is provided below:
-        {video_title}
-        """
-        response = get_gemini_response(review_or_not)
+    podcast_blob = bucket.blob(podcast_gcs_path)
+    review_blob = bucket.blob(review_gcs_path)
+    transcripts_blob = bucket.blob(transcripts_gcs_path)
 
-        if response.lower()=='yes':
+    cache_log_suffix = f" (spoilers: {allow_spoilers}, length: {length_preference})"
 
-            logger.info(f"Processing '{video_title}' by '{video_creator}'")
+    if podcast_blob.exists() and review_blob.exists() and transcripts_blob.exists():
+        logger.info(f"Cache hit for '{movie}'{cache_log_suffix}")
+        podcast_bytes = podcast_blob.download_as_bytes()
+        review_pickle_bytes = review_blob.download_as_bytes()
+        transcripts_pickle_bytes = transcripts_blob.download_as_bytes()
 
-            try:
-                transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'], proxies=proxies)
+        review = pickle.loads(review_pickle_bytes)
+        video_transcripts = pickle.loads(transcripts_pickle_bytes)
 
-                full_transcript = " ".join([item['text'] for item in transcript_list])
+        logger.info(
+            f"Successfully loaded cached data for '{movie}'{cache_log_suffix} from GCS.")
+        return video_transcripts, review, podcast_bytes
 
-                video_transcripts.append({
-                    'title': video_title,
-                    'creator': video_creator,
-                    'url': video_url,
-                    'transcript': full_transcript
-                })
-                logger.info("Transcript Retrieved")
-            except Exception as e:
-                logger.error(f"{e}")
-                logger.info("Transcript Not Found")
+    logger.info(
+        f"Cache miss for '{movie}'{cache_log_suffix}. Generating new review.")
 
-    return video_transcripts
-
-
-def get_review_summary(chunk, movie):
-    video = f"review '{chunk['title']}' by '{chunk['creator']}'\n\n{chunk['transcript']}"
-    logger.info('summarizing '+video.split('\n\n')[0])
-    prompt = f"""
-    You are an intelligent film critic.
-    Your task is to write a summary of someone's review of the film "{movie}".
-    If the provided review is not a dedicated review of "{movie}", just return 'Not a "{movie}" review'.
-    Otherwise, summarize the review into around 1000 words.
-    I will provide the film review below:
-    {video}
-    """
-    podcast_transcript = get_gemini_response(prompt)
-    return podcast_transcript
-
-def review_summary_with_retry(chunk, movie, max_retries=10, initial_delay=5):
-
-    retries = 0
-    delay = initial_delay
-    while retries <= max_retries:
-        try:
-            return get_review_summary(chunk, movie)
-        except:
-            logger.info(f"Error processing chunk '{chunk.get('title', 'Unknown')}' (Retry {retries + 1}/{max_retries})")
-            if retries < max_retries:
-                logger.info(f"Waiting {delay} seconds before retrying...")
-                time.sleep(delay)
-                delay *= 2
-                retries += 1
-            else:
-                logger.info(f"Max retries reached for chunk '{chunk.get('title', 'Unknown')}'. Skipping.")
-                return None
-            
-
-def review_summary_parallel_with_retry(chunks, movie, max_workers=5):
-
-    results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_chunk = {executor.submit(review_summary_with_retry, chunk, movie): chunk for chunk in chunks}
-        for future in concurrent.futures.as_completed(future_to_chunk):
-            chunk = future_to_chunk[future]
-            try:
-                result = future.result()
-                results.append(result)
-            except:
-                pass
-
-    return results
-
-
-
-def get_final_summary(chunks, movie):
-    combined_reviews = '\n\n----------------------\n\n'.join(chunks)
-    prompt = f"""
-    You are an intelligent film critic. Your task is to write a film review.
-    I will give you multiple different reviews about the film "{movie}".
-    Combine the information in the reviews to produce a single summary review that offers the most comprehensive overview.
-    If there is any review that is related to movies other than "{movie}", ignore that review.
-    The summary review should be between 1500-2000 words in length.
-    It should be written in essay format with no title where each paragraph is separated with newline separators. Do NOT include any bullet points.
-    Dive into the summary review right away and do NOT include any introductory remarks such as "After going through the reviews".
-    I will provide the source reviews here:
-    {combined_reviews}
-    """
-    review = get_gemini_response(prompt)
-    return review
-
-def get_audio_chunk(text, language_code="en-US", voice_name="en-US-Chirp3-HD-Leda"):
-
-    client = texttospeech.TextToSpeechClient()
-
-    input_text = texttospeech.SynthesisInput(text=text)
-
-    voice = texttospeech.VoiceSelectionParams(
-        language_code=language_code,
-        name=voice_name
-    )
-
-    audio_config = texttospeech.AudioConfig(
-        audio_encoding=texttospeech.AudioEncoding.MP3
-    )
-
-    response = client.synthesize_speech(
-        request={"input": input_text, "voice": voice, "audio_config": audio_config}
-    )
-
-    return response.audio_content
-
-
-def create_podcast(review):
-    review_split = [x for x in review.split('\n') if len(x)>2]
-    audio_segments = []
-    one_second_silence = AudioSegment.silent(duration=1000)
-
-    for i, chunk in enumerate(review_split):
-        tries = 0
-        while tries<5:
-            try:
-                audio_content = get_audio_chunk(chunk)
-                break
-            except Exception as e:
-                # logger.info(f"audio creation failed with error: {e}")
-                tries += 1
-                time.sleep(1)
-        segment = AudioSegment.from_mp3(io.BytesIO(audio_content))
-        audio_segments.append(segment)
-        audio_segments.append(one_second_silence)
-        logger.info(f'{i+1} th podcast chunk created...')
-
-    combined_audio = AudioSegment.empty()
-
-    for segment in audio_segments:
-        combined_audio += segment
-
-    audio_buffer = io.BytesIO()
-    combined_audio.export(audio_buffer, format="mp3")
-    audio_buffer.seek(0)
-
-    return audio_buffer.read()
-
-
-def main(movie: str):
-    search_term = movie + ' movie review'
-    max_results = 5
-    logger.info(f'Searching YouTube for reviews on {movie}...')
+    logger.info(
+        f'Searching YouTube for {"spoiler" if allow_spoilers else "non-spoiler"} reviews on {movie}...')
     videos = YoutubeSearch(search_term, max_results=max_results).to_dict()
     logger.info('Search complete, retrieving transcripts...')
-    video_transcripts = get_video_transcripts(videos, movie)
+    video_transcripts = get_video_transcripts(
+        videos, movie, allow_spoilers=allow_spoilers)
+
+    if len(video_transcripts) < 2:
+        logger.info(
+            f"Not enough reviews found. Trying a more general search...")
+        general_search = movie + " movie review"
+        additional_videos = YoutubeSearch(
+            general_search, max_results=max_results).to_dict()
+        additional_transcripts = get_video_transcripts(
+            additional_videos, movie, allow_spoilers=allow_spoilers)
+        existing_ids = {v['url'] for v in video_transcripts}
+        for transcript in additional_transcripts:
+            if transcript['url'] not in existing_ids:
+                video_transcripts.append(transcript)
+
     logger.info('Retrieval complete, analyzing reviews...')
-    reviews = review_summary_parallel_with_retry(video_transcripts, movie)
-    review = get_final_summary(reviews, movie)
+    reviews = review_summary_parallel_with_retry(
+        video_transcripts, movie, allow_spoilers=allow_spoilers)
+
+    if not reviews:
+        logger.error("No valid reviews could be processed")
+        return video_transcripts, "No valid reviews could be processed for this movie.", None
+
+    try:
+        length_options = PODCAST_LENGTH_OPTIONS.get(
+            length_preference, PODCAST_LENGTH_OPTIONS[DEFAULT_LENGTH_PREFERENCE])
+        final_summary_length_instruction = length_options["prompt_instruction"]
+    except KeyError:
+        logger.error(
+            f"Invalid length_preference '{length_preference}' for final summary. Using default instruction.")
+        final_summary_length_instruction = PODCAST_LENGTH_OPTIONS[
+            DEFAULT_LENGTH_PREFERENCE]["prompt_instruction"]
+
+    logger.info(
+        f'Generating final summary with target length: "{final_summary_length_instruction}"')
+    review = get_final_summary(
+        reviews,
+        movie,
+        allow_spoilers=allow_spoilers,
+        length_prompt_instruction=final_summary_length_instruction
+    )
+
     logger.info('Analysis complete, generating podcast...')
+
     podcast_bytes = create_podcast(review)
     logger.info(f"Podcast generation complete")
+
+    review_pickle_bytes = pickle.dumps(review)
+    transcripts_pickle_bytes = pickle.dumps(video_transcripts)
+
+    podcast_blob.upload_from_string(podcast_bytes, content_type='audio/mpeg')
+    review_blob.upload_from_string(
+        review_pickle_bytes, content_type='application/octet-stream')
+    transcripts_blob.upload_from_string(
+        transcripts_pickle_bytes, content_type='application/octet-stream')
+    logger.info(
+        f"Successfully saved results for '{movie}'{cache_log_suffix} to GCS.")
+    logger.info(
+        f"Time taken for '{movie}': {(time.time() - start_time):.2f} seconds")
     return video_transcripts, review, podcast_bytes
 
 
-@st.cache_data
-def generate_podcast(movie_title):
-    video_transcripts, review, podcast_bytes = main(movie_title)
+@st.cache_data(hash_funcs={bool: lambda x: f"spoiler_{x}"})
+def generate_podcast(movie_title, allow_spoilers=False, length_preference: str = DEFAULT_LENGTH_PREFERENCE):
+    video_transcripts, review, podcast_bytes = main(
+        movie_title,
+        allow_spoilers=allow_spoilers,
+        length_preference=length_preference
+    )
     return video_transcripts, review, podcast_bytes
 
+def render_header():
+    st.markdown(
+        """
+        <style>
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .logo-text {
+            font-size: 28px;
+            font-weight: 700;
+            color: white;
+        }
+        .nav-links a {
+            margin-left: 1.2rem;
+            font-size: 16px;
+            color: white;
+            text-decoration: none;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        </style>
+        <div class="header-container">
+            <div class="logo-text">🎬 CineCast <span style="font-weight:300;">AI</span></div>
+            <div class="nav-links">
+                <a href="#">Home</a>
+                <a href="#">Podcasts</a>
+                <a href="#">About</a>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
-    st.title("CineCast AI")
-    movie_title = st.text_input("Enter movie title:")
+    st.set_page_config(page_title="CineCast AI", page_icon="🎬")
+    render_header()
 
-    if movie_title:
-        with st.spinner(f"Searching for reviews and generating podcast for '{movie_title}', may take up to 10 minutes..."):
-            video_transcripts, review, podcast_bytes = generate_podcast(movie_title)
+    # ─── Custom Dark-Card Styles ───
+    st.markdown(
+        """
+        <style>
+        body, .stApp {
+            background-color: #1c1c1c;
+            color: #f5f5f5;
+            font-family: 'Courier New', monospace;
+        }
 
-        st.subheader(f"Podcast for '{movie_title}' generated!")
-        st.audio(podcast_bytes, format="audio/mp3")
+        .centered-container {
+            max-width: 620px;
+            margin-left: auto;
+            margin-right: auto;
+        }
 
-        download_filename = f"{movie_title.replace(' ','_')}_podcast.mp3"
-        st.download_button(
-            label="Download Podcast",
-            data=podcast_bytes,
-            file_name=download_filename,
-            mime="audio/mp3",
-        )
+        div.stForm {
+            background-color: #2e2e2e;
+            border: 2px dashed #888;
+            border-radius: 0;
+            padding: 24px;
+        }
 
-        with st.expander("Podcast Transcript"):
-            st.write(review)
+        div.stForm input, div.stForm .stTextInput>div>input {
+            background-color: #000 !important;
+            color: #fff !important;
+            border: 2px solid #fff;
+        }
 
-        with st.expander("Source Videos"):
-            video_review_data = []
-            for video_info in video_transcripts:
-                title = video_info['title']
-                creator = video_info['creator']
-                url = video_info['url']
-                markdown_link = f"[{title} by {creator}]({url})"
-                video_review_data.append({"Reviews": markdown_link})
+        div.stForm .stCheckbox>label {
+            color: #ccc !important;
+            font-weight: bold;
+        }
 
-            df = pd.DataFrame(video_review_data)
-            st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
+        div.stForm button[kind="primary"] {
+            background-color: #000 !important;
+            color: #fff !important;
+            border: 2px solid #fff !important;
+            font-weight: bold !important;
+            text-transform: uppercase;
+        }
+
+        .movie-card {
+            border: 2px dashed #888;
+            border-radius: 0px;
+            padding: 20px;
+            margin: 30px auto;
+            display: flex;
+            gap: 25px;
+            align-items: flex-start;
+            background: #2e2e2e;
+            font-family: 'Courier New', monospace;
+            width: 620px;
+            max-width: 100%;
+        }
+
+        .poster-container {
+            flex-shrink: 0;
+            border: 2px solid #aaa;
+        }
+
+        .movie-poster {
+            width: 200px;
+            height: auto;
+            display: block;
+        }
+
+        .movie-info h1, .movie-info h3, .movie-summary {
+            color: #f5f5f5;
+        }
+
+        [data-testid="stSidebar"] {
+            background-color: #2e2e2e;
+            border-right: 3px solid #888;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ─── Generate Podcast Card ───
+    with st.container():
+        st.markdown('<div class="centered-container">', unsafe_allow_html=True)
+        with st.form(key="search_form"):
+            st.markdown("## Generate Your Movie Podcast", unsafe_allow_html=True)
+
+            # Movie title
+            movie_title = st.text_input(
+                label="Movie Title",
+                placeholder="e.g. Silence of the Lambs",
+                key="movie_title_input"
+            )
+
+            # Spoiler-free toggle (unique key)
+            spoiler_free = st.checkbox(
+                label="Spoiler-Free Mode",
+                value= not st.session_state.get("allow_spoilers", False),
+                key="spoiler_toggle_form",
+                help="Enable this to avoid plot spoilers"
+            )
+
+            allow_spoilers = not spoiler_free
+
+            # Length selector (unique key)
+            length_label = st.selectbox(
+                label="Episode Length",
+                options=[PODCAST_LENGTH_OPTIONS[k]["ui_label"] for k in LENGTH_PREFERENCE_ORDER],
+                index=LENGTH_PREFERENCE_ORDER.index(
+                    st.session_state.get("length_preference", DEFAULT_LENGTH_PREFERENCE)
+                ),
+                key="length_label_form"
+            )
+
+            # Submit button
+            generate_btn = st.form_submit_button(
+                label="Generate Podcast",
+                use_container_width=True
+            )
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # ─── Handle form submission ───
+        if generate_btn:
+            # persist into session_state for your main() logic
+            st.session_state.allow_spoilers = allow_spoilers
+            chosen_key = next(
+                k for k, v in PODCAST_LENGTH_OPTIONS.items()
+                if v["ui_label"] == length_label
+            )
+            st.session_state.length_preference = chosen_key
+
+            if not movie_title:
+                st.warning("Please enter a movie title first!")
+            else:
+
+                
+                # Retrieve movie metadata
+                found_flag, movie_details = find_similar_movie_imdb(movie_title)
+
+                if found_flag:
+                    movie_title = f"{movie_details['title']} ({movie_details['release_date']})"
+                    director = movie_details.get('director', "Unknown")
+                    description = movie_details.get('description', "No description available.")
+
+                    # Display movie info card
+                    st.markdown(f"""
+                        <div class="movie-card">
+                            <div class="poster-container">
+                                <img src="{movie_details['poster']}" class="movie-poster">
+                            </div>
+                            <div class="movie-info">
+                                <h1>{movie_title}</h1>
+                                <h3>Directed by: {director}</h3>
+                                <p class="movie-summary">Summary: {description}</p>
+                            </div>
+                        </div>
+
+                        <style>
+                            .movie-card {{
+                                border: 1px solid #2e2e2e;
+                                border-radius: 15px;
+                                padding: 20px;
+                                margin: 30px auto;
+                                display: flex;
+                                gap: 25px;
+                                align-items: flex-start;
+                                background: #2e2e2e;;
+                                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                width: 620px;
+                                max-width: 100%;
+                            }}
+
+                            .poster-container {{
+                                flex-shrink: 0;
+                                border-radius: 8px;
+                                overflow: hidden;
+                                border: 1px solid #444;
+                            }}
+
+                            .movie-poster {{
+                                width: 200px;
+                                height: auto;
+                                display: block;
+                            }}
+
+                            .movie-info h1 {{
+                                margin: 0 0 8px 0;
+                                color: #fff;
+                                font-size: 28px;
+                            }}
+
+                            .movie-info h3 {{
+                                margin: 0 0 12px 0;
+                                color: #fff;
+                                font-size: 18px;
+                            }}
+
+                            .movie-summary {{
+                                margin: 4px 0;
+                                color: #d1d5db;
+                                font-size: 16px;
+                            }}
+                        </style>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info("Movie poster and summary unavailable.")
+
+                with st.spinner(
+                    f"Searching for reviews and generating "
+                    f"{'spoiler-free ' if not allow_spoilers else ''}"
+                    f"podcast for '{movie_title}', may take up to 3 minutes..."
+                ):
+                    video_transcripts, review, podcast_bytes = generate_podcast(
+                        movie_title,
+                        allow_spoilers=allow_spoilers,
+                        length_preference=chosen_key
+                    )
+
+                st.subheader(f"Podcast for '{movie_title}' generated!")
+                st.audio(podcast_bytes, format="audio/mp3")
+
+                if "recent_episodes" not in st.session_state:
+                    st.session_state.recent_episodes = []
+                # Save recent episode
+                new_episode = {
+                    "title": movie_title,
+                    "length": PODCAST_LENGTH_OPTIONS[chosen_key]["ui_label"],
+                    "has_spoilers": allow_spoilers,
+                    "timestamp": time.strftime("%B %d, %Y")
+                }
+                st.session_state.recent_episodes.insert(0, new_episode)
+                st.session_state.recent_episodes = st.session_state.recent_episodes[:3]
+
+                # Download button
+                spoiler_tag = "with_spoilers" if allow_spoilers else "spoiler_free"
+                fname = f"{movie_title.replace(' ', '_')}_{spoiler_tag}_{chosen_key}.mp3"
+                st.download_button(
+                    label="Download Podcast",
+                    data=podcast_bytes,
+                    file_name=fname,
+                    mime="audio/mp3",
+                )
+
+                # Transcript expander
+                with st.expander("Podcast Transcript"):
+                    st.write(review)
+
+                # Source Videos expander
+                with st.expander("Source Videos"):
+                    video_review_data = []
+                    for info in video_transcripts:
+                        tag = ("🚨 Contains Spoilers" 
+                            if info.get("likely_has_spoilers", False) 
+                            else "✅ Spoiler-Free")
+                        link = f"[{info['title']} by {info['creator']}]({info['url']}) - {tag}"
+                        video_review_data.append({"Reviews": link})
+                    df = pd.DataFrame(video_review_data)
+                    st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
+
+        # ─── Recent Episodes Section ───
+        if "recent_episodes" in st.session_state and st.session_state.recent_episodes:
+            st.markdown("## 🎧 Recent Episodes")
+
+            for episode in reversed(st.session_state.recent_episodes):
+                title_display = f"🎬 {episode['title']}"
+                meta_info = (
+                    f"Length: {episode['length']}  |  "
+                    f"{'✅ Spoiler-Free' if not episode.get('has_spoilers', False) else '🚨 Includes Spoilers'}  |  "
+                    f"Generated on {episode['timestamp']}"
+                )
+                st.markdown(
+                    f"""
+                    <div style="background-color: #2e2e2e; padding: 15px 20px; border-radius: 12px; margin-bottom: 15px;">
+                        <p style="color: #F9FAFB; margin: 0 0 6px 0;">{title_display}</p>
+                        <p style="color: #D1D5DB; margin: 0;">{meta_info}</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+    st.markdown("---")
+    st.caption(
+        "Created by: Andrea Quiroz, Nihal Karim, Peeyush Patel, Sang Ahn, Suhho Lee"
+    )

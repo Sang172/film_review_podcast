@@ -1,0 +1,15 @@
+# Environment and credentials
+.env
+*.json
+keys/
+
+# Python artifacts
+__pycache__/
+venv/
+
+# Streamlit config
+.streamlit/
+
+# OS & editor cruft
+.DS_Store
+*.swp
