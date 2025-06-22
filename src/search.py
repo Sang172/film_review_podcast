@@ -6,7 +6,6 @@ import asyncio
 
 logger = logging.getLogger(__name__)
 
-# remove proxy=proxy for local
 async def get_single_trasncript(video, movie, allow_spoilers=False):
     proxies = {'http': proxy, 'https': proxy} if proxy else None
     video_id = video['id']
@@ -35,11 +34,9 @@ async def get_single_trasncript(video, movie, allow_spoilers=False):
         if contains_spoiler and allow_spoilers:
             logger.info(f"Found likely spoiler review: '{video_title}' by '{video_creator}'")
 
-
         try:
             transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'], proxies=proxies)
             # transcript_list = await asyncio.to_thread(YouTubeTranscriptApi.get_transcript, video_id, languages=['en'])
-
             full_transcript = " ".join([item['text'] for item in transcript_list])
 
             logger.info(f"Transcript for '{video_title}' by '{video_creator}' Retrieved")

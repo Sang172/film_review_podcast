@@ -1,5 +1,5 @@
 youtube-search==2.1.2
-youtube-transcript-api==0.6.3
+youtube-transcript-api==1.1.0
 pandas==2.2.3
 google-generativeai==0.8.4
 google-cloud-texttospeech==2.25.1
